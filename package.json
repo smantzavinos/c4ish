@@ -1,0 +1,66 @@
+{
+  "name": "c4ish",
+  "version": "0.1.0",
+  "description": "Reviewable architecture diagrams of a planned software change: JSON model + project profile -> SVG.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build && pnpm run package",
+    "preview": "vite preview",
+    "package": "svelte-kit sync && svelte-package && publint",
+    "prepare": "svelte-kit sync || echo ''",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.cli.json --noEmit",
+    "test": "vitest run",
+    "c4ish": "tsx src/lib/cli/main.ts",
+    "gen:metrics": "node scripts/gen-font-metrics.mjs",
+    "gen:schema": "tsx scripts/gen-schema-json.ts",
+    "render:examples": "tsx scripts/render-examples.ts"
+  },
+  "bin": {
+    "c4ish": "./dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.spec.*",
+    "!dist/test",
+    "schema"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "svelte": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans": "^5.3.0",
+    "@sveltejs/adapter-auto": "^8.0.0",
+    "@sveltejs/kit": "^3.1.0",
+    "@sveltejs/package": "^3.0.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/node": "^26.6.5",
+    "fast-xml-parser": "^5.11.2",
+    "fontkit": "^2.0.4",
+    "publint": "^0.3.25",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.7.7",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "elkjs": "^0.12.0"
+  }
+}

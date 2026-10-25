@@ -1,0 +1,37 @@
+{
+	"$schema": "../schema/profile.schema.json",
+	"profileVersion": 0,
+	"id": "stockroom",
+	"title": "Stockroom (example project profile)",
+	"extends": "default",
+	"elementKinds": {
+		"secret": { "label": "Deployment secret", "icon": "secret" },
+		"caller": { "label": "Existing caller", "icon": "terminal" }
+	},
+	"patternFamilies": {
+		"web": { "label": "Web app", "icon": "page", "colour": "#2563eb" },
+		"api": { "label": "Backend API", "icon": "gear", "colour": "#7c3aed" },
+		"data": { "label": "Data patterns", "icon": "table", "colour": "#0f766e" },
+		"security": { "label": "Security", "icon": "guard", "colour": "#be185d" }
+	},
+	"patterns": {
+		"web/ssr-live-page": { "label": "SSR + live page", "family": "web", "icon": "page", "catalog": "docs/patterns/web.md#ssr-live-page" },
+		"web/route-actions": { "label": "route actions", "family": "web", "icon": "route", "catalog": "docs/patterns/web.md#route-actions" },
+		"web/detail-frame": { "label": "version detail frame", "family": "web", "icon": "frame", "catalog": "docs/patterns/web.md#detail-frame" },
+		"api/scoped-read": { "label": "scoped read query", "family": "api", "icon": "query", "catalog": "docs/patterns/api.md#scoped-read" },
+		"api/tenant-query": { "label": "tenant query", "family": "api", "icon": "query", "catalog": "docs/patterns/api.md#tenant-query" },
+		"api/guarded-mutation": { "label": "guarded mutation", "family": "api", "icon": "mutation", "catalog": "docs/patterns/api.md#guarded-mutation" },
+		"api/confirmed-tool": { "label": "confirmed tool call", "family": "api", "icon": "terminal", "catalog": "docs/patterns/api.md#confirmed-tool" },
+		"data/tenant-scoped": { "label": "D1 tenant-scoped", "family": "data", "icon": "table" },
+		"data/stable-identity": { "label": "D2 stable identity", "family": "data", "icon": "table" },
+		"data/versioned-rows": { "label": "D3 versioned rows", "family": "data", "icon": "version" },
+		"data/typed-join": { "label": "D4 typed join", "family": "data", "icon": "join" },
+		"data/polymorphic-ref": { "label": "D5 polymorphic ref", "family": "data", "icon": "link" }
+	},
+	"relationshipKinds": {
+		"seals": { "label": "seals continuation", "category": "runtime", "arrow": "filled" },
+		"saves": { "label": "saves", "category": "runtime", "arrow": "filled" },
+		"filters": { "label": "filters through", "category": "runtime", "arrow": "filled" },
+		"adapts": { "label": "adapts", "category": "runtime", "arrow": "filled" }
+	}
+}

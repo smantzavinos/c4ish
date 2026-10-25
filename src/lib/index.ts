@@ -1,0 +1,13 @@
+// c4ish public API. Everything here is DOM-free and runs in Node and the browser.
+export type * from './model/types.js';
+export { modelSchema, profileSchema } from './model/schema.js';
+export { validateModel, validateModelSchema, validateProfileSchema, type Diagnostic } from './model/validate.js';
+export { defaultProfile } from './profile/default.js';
+export { resolveProfile } from './profile/resolve.js';
+export type * from './layout/types.js';
+export { ElkLayoutEngine, type ElkEngineOptions } from './layout/elk.js';
+export { renderView, type RenderOptions, type RenderResult } from './render/page.js';
+export { buildScene, type Scene } from './render/scene.js';
+export { measure, wrap, truncate, FONT_FAMILY } from './text/measure.js';
+export { ICON_NAMES } from './render/icons.js';
+export { check, type CheckResult } from './api.js';

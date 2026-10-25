@@ -1,0 +1,421 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://c4ish.dev/schema/v0/profile.json",
+	"title": "c4ish profile (schema v0)",
+	"type": "object",
+	"required": [
+		"profileVersion",
+		"id",
+		"title"
+	],
+	"additionalProperties": false,
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"profileVersion": {
+			"const": 0
+		},
+		"id": {
+			"type": "string"
+		},
+		"title": {
+			"type": "string"
+		},
+		"extends": {
+			"type": "string"
+		},
+		"elementKinds": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"role": {
+						"enum": [
+							"element",
+							"library"
+						]
+					},
+					"icon": {
+						"type": "string"
+					},
+					"area": {
+						"type": "string"
+					},
+					"parents": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			}
+		},
+		"patternFamilies": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"icon",
+					"colour"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"icon": {
+						"type": "string"
+					},
+					"colour": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					}
+				}
+			}
+		},
+		"patterns": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"family"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z_][A-Za-z0-9_.:/-]*$"
+					},
+					"label": {
+						"type": "string"
+					},
+					"family": {
+						"type": "string"
+					},
+					"status": {
+						"enum": [
+							"catalogued",
+							"proposed"
+						]
+					},
+					"icon": {
+						"type": "string"
+					},
+					"catalog": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"relationshipKinds": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"category"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"category": {
+						"enum": [
+							"runtime",
+							"data",
+							"reference",
+							"trace",
+							"lifecycle"
+						]
+					},
+					"direction": {
+						"enum": [
+							"forward",
+							"none",
+							"both"
+						]
+					},
+					"arrow": {
+						"enum": [
+							"filled",
+							"open",
+							"diamond",
+							"none"
+						]
+					},
+					"enforcementRequired": {
+						"type": "boolean"
+					},
+					"colour": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					},
+					"line": {
+						"enum": [
+							"solid",
+							"dashed",
+							"dotted",
+							"long-dash",
+							"double"
+						]
+					}
+				}
+			}
+		},
+		"enforcement": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"colour",
+					"line"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"colour": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					},
+					"line": {
+						"enum": [
+							"solid",
+							"dashed",
+							"dotted",
+							"long-dash",
+							"double"
+						]
+					},
+					"width": {
+						"type": "number"
+					}
+				}
+			}
+		},
+		"changeStates": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"style"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"style": {
+						"enum": [
+							"new",
+							"modified",
+							"reused",
+							"removed"
+						]
+					},
+					"badge": {
+						"type": "string"
+					}
+				}
+			}
+		},
+		"lifecycle": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"border",
+					"colour"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"border": {
+						"enum": [
+							"solid",
+							"dashed"
+						]
+					},
+					"colour": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					},
+					"fill": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					},
+					"glyph": {
+						"enum": [
+							"lock",
+							"none"
+						]
+					}
+				}
+			}
+		},
+		"areas": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"colour",
+					"fill"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"colour": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					},
+					"fill": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{3,8}$"
+					}
+				}
+			}
+		},
+		"views": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "object",
+				"required": [
+					"label",
+					"corners",
+					"colour"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"corners": {
+						"enum": [
+							"sharp",
+							"rounded"
+						]
+					},
+					"colour": {
+						"type": "object",
+						"required": [
+							"nodes",
+							"edges",
+							"meaning"
+						],
+						"additionalProperties": false,
+						"properties": {
+							"nodes": {
+								"enum": [
+									"area",
+									"pattern",
+									"none"
+								]
+							},
+							"edges": {
+								"enum": [
+									"enforcement",
+									"kind",
+									"none"
+								]
+							},
+							"meaning": {
+								"type": "string"
+							}
+						}
+					},
+					"forbidSiblingChains": {
+						"type": "boolean"
+					},
+					"direction": {
+						"enum": [
+							"right",
+							"down",
+							"left",
+							"up"
+						]
+					}
+				}
+			}
+		},
+		"rules": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"missingEnforcement": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"missingChange": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"siblingChains": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"textBudget": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"removedWithLiveEdges": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"titleMaxChars": {
+					"type": "integer"
+				},
+				"subtitleMaxChars": {
+					"type": "integer"
+				},
+				"labelMaxChars": {
+					"type": "integer"
+				}
+			}
+		},
+		"divergenceColour": {
+			"type": "string",
+			"pattern": "^#[0-9a-fA-F]{3,8}$"
+		}
+	}
+}
