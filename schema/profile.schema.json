@@ -407,6 +407,13 @@
 						"off"
 					]
 				},
+				"tourCoverage": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
 				"titleMaxChars": {
 					"type": "integer"
 				},

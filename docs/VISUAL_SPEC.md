@@ -156,6 +156,14 @@ A data connector without enforcement is a lint warning. It's drawn as a bright m
 - **Absence:** an `absence` is a grey italic caption with no box, placed by the layout engine inside the parent where the missing thing would be. "Nothing requires it in this configuration."
 - **Details tag:** a small grey square with a letter at a node's bottom-right. The `--appendix` markdown (and the viewer panel) lists the node title and its details.
 
+## 7a. Tour steps
+
+- **Caption** replaces the review-focus card: a pale blue card with a 3px tour-blue left rule, caps "TOUR · n / N · TOUR TITLE", the step title and narration (light markdown: bold, code, lists).
+- **Lighting:** lit items keep full ink; everything else drops to 0.16 opacity (unless `dimOthers: false`). When a step names notes, the other notes drop to 0.35.
+- **Path:** each connector on the path gets a soft tour-blue glow under the normal stroke (its enforcement colour is kept). A numbered tour-blue badge (white numeral, 16px) sits on each connector, clear of cards, labels and earlier badges. In the viewer, the glow draws on in order (260ms per connector) and badges pop in; both are skipped with `prefers-reduced-motion`.
+- **Selection ring:** 2px tour blue around the selected card.
+- **Tour blue `#2563eb`** is used only for tour, path and selection. Callout discs stay ink, so order and note numbers never share a look.
+
 ## 8. Legend (Key)
 
 Generated per view from a data model (`buildLegend`), with only used items. The static page draws it as a compact column; the viewer draws the same rows as filter buttons. It opens with the view's colour meaning in words (`Card colour = pattern · line colour = who enforces a data relationship`).

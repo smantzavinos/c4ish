@@ -79,6 +79,23 @@ A **profile** is project-owned data: element types and variations (with catalog 
 - every compared item carries a change state;
 - no sibling chains.
 
+### Tours
+
+A **tour** is an authored walkthrough of the change for review. Each step is a view plus the state a reviewer could set by hand: what is lit (`focus`, `select`, legend `highlight` keys), an ordered `path` of connectors (numbered on the drawing), which notes to show, plus short narration. The viewer plays it as a step card. The CLI exports it as static pages. Lint checks references and path contiguity, and warns about changes, proposals, risks and divergences that no step covers. A good review tour follows: what changes for the user → main flows as paths → patterns in use → proposed patterns → removed/reused → risks. See DECISIONS 24–26.
+
+```json
+"tours": [{ "id": "review", "title": "Review: wiring writes", "steps": [  // excerpt; read-path ids illustrative
+  { "id": "write-path", "view": "engineering", "title": "Write path",
+    "body": "Every pin write goes through the **wiring guard**.",
+    "path": ["routeFrame", "framePicker", "pickerWrite", "guardWrites", "pinContract"],
+    "select": "guard" },
+  { "id": "read-path", "view": "engineering", "title": "Read path",
+    "path": ["pageRead", { "jump": true, "text": "later" }, "tableRead"], "notes": ["n-pin"] },
+  { "id": "proposed", "view": "engineering", "title": "Proposed patterns",
+    "highlight": { "proposed": true } }
+]}]
+```
+
 ## 4. Layout
 
 - **Automatic first.** v0 uses elkjs (layered, compound, orthogonal) behind a `LayoutEngine` interface; a TALA adapter can be added later (DECISIONS 11).

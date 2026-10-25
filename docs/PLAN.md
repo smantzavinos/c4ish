@@ -41,6 +41,17 @@ A first usable version: an agent writes a model; `c4ish validate` and `lint` che
 
 Next: pins and the sidecar layout file (via the `override` hook); a TALA adapter spike against the same layout invariants; less dead space in disconnected views (component packing).
 
+## Phase 3 status (2026-10-21)
+
+| Area | State |
+|---|---|
+| Schema | `tours[]` with steps over view, focus, select, highlight keys, ordered `path` (with `{jump}`), notes, only-changes (DECISIONS 24) |
+| Lint | Tour reference errors, `tour-path-gap`, `tour-coverage` with uncovered ids (25) |
+| Static | `c4ish tour` → per-step SVG/PNG, offline `index.html`, `tour.md`; examples export to `examples/*/tour/` (26) |
+| Viewer | ▶ Tour, step card, ←/→/Esc, camera glide, path draw-on + badges (reduced-motion safe), explore/resume, `#tour=&step=` links (24) |
+
+Next: authoring help (write a step from the current viewer state), timing a cold reviewer through a tour.
+
 ## Risks
 - **Layout and routing quality.** TALA handles hierarchical placement but ignores preset waypoints; strict containment and stable routes after manual moves aren't guaranteed by any tested open-source option. The fallback: recompute only the routes a move affects, and accept engine routes otherwise. A commercial router is an option, but only after it passes the same tests.
 - **TALA availability and build.** Confirm licensing and a reproducible Nix build early (M3 spike before M4 work depends on it).

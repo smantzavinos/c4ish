@@ -34,6 +34,7 @@ pnpm c4ish validate examples/paged-reads/model.c4ish.json
 pnpm c4ish render examples/versioned-wiring/model.c4ish.json --view product --out product.svg --png
 pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
 pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.svg.appendix.md (details, contracts, notes)
+pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg/png, index.html, tour.md
 pnpm dev               # demo page with the example diagrams; /viewer is the interactive viewer
 pnpm build             # static site in build/ (open build/viewer/index.html via any static server; works offline)
 pnpm check && pnpm test
@@ -42,6 +43,8 @@ pnpm check && pnpm test
 ### Viewer
 
 `/viewer` opens a model (and optionally its profile) from a file picker or drag-and-drop, or one of the bundled examples. Ctrl/Cmd + wheel zooms around the cursor; a plain wheel pans. Drag to pan freely at any zoom, including beyond the diagram edges; dragging continues outside the canvas until release. **Fit** centres the whole diagram with a margin. Click a card or connector for its details, pattern (with catalog reference), libraries, fields, contract, enforcement and notes. Hover shows its neighbourhood. Click key rows to highlight a pattern, connector style or change state; **Only changes** hides reused context. **Export SVG** writes the same page as the CLI. Deep links: `?example=versioned-wiring&view=engineering&select=rewire&highlight=pattern:api/tenant-query&only=changes`.
+
+**Tours.** When the model has `tours`, a **▶ Tour** button appears. The step card replaces the notes column (step n / N, narration, the step's notes, Prev/Next, the step list), ←/→ step and Esc exits. The camera glides to the step and path connectors are numbered in order. Click around freely: the card offers **Back to this step**. Deep link: `?example=versioned-wiring#tour=review&step=write-path`. The same tour exports as static pages with `c4ish tour` (see `examples/*/tour/`).
 
 Library: `import { check, renderView, buildDiagram, buildLegend } from 'c4ish'`; Svelte components from `c4ish/viewer`. `check(modelJson, profileJson)` returns diagnostics plus the resolved model and profile. `renderView(model, profile, { view })` returns `{ svg, width, height, geometry }`. A model names its profile by relative path (`"profile": "../profile.c4ish.json"`); profiles can `"extends": "default"`.
 

@@ -38,3 +38,26 @@ describe('viewer camera', () => {
 		expect(next).toEqual({ x: -500, y: -800, zoom: 2 });
 	});
 });
+
+describe('fitRectCamera / tweenCamera', () => {
+	it('centres a rect and caps the zoom', async () => {
+		const { fitRectCamera } = await import('./camera.js');
+		const c = fitRectCamera({ width: 1000, height: 800 }, { x: 100, y: 100, width: 200, height: 100 }, 50, 1.5);
+		expect(c.zoom).toBe(1.5);
+		expect(c.x + (100 + 100) * c.zoom).toBeCloseTo(500);
+		expect(c.y + (100 + 50) * c.zoom).toBeCloseTo(400);
+		const big = fitRectCamera({ width: 1000, height: 800 }, { x: 0, y: 0, width: 1800, height: 700 }, 50);
+		expect(big.zoom).toBeCloseTo(900 / 1800);
+	});
+
+	it('starts at a and ends at b', async () => {
+		const { tweenCamera } = await import('./camera.js');
+		const a = { x: 10, y: 20, zoom: 0.5 };
+		const b = { x: -300, y: 40, zoom: 2 };
+		expect(tweenCamera(a, b, 0)).toEqual(a);
+		const end = tweenCamera(a, b, 1);
+		expect(end.zoom).toBeCloseTo(2);
+		expect(end.x).toBeCloseTo(-300);
+		expect(end.y).toBeCloseTo(40);
+	});
+});

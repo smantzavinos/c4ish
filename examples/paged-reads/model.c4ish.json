@@ -5,7 +5,10 @@
 	"title": "Stock items: bounded paged reads",
 	"summary": "Replace the all-items collector with independent, bounded, authorised reads and a sealed page cursor.",
 	"profile": "../profile.c4ish.json",
-	"provenance": { "baseline": "example", "note": "Invented example mirroring a real secure paged-reads change." },
+	"provenance": {
+		"baseline": "example",
+		"note": "Invented example mirroring a real secure paged-reads change."
+	},
 	"views": [
 		{
 			"id": "engineering",
@@ -17,11 +20,21 @@
 				"The page cursor never exposes raw sort values; it is sealed with a deployment key that must be provisioned before rollout.",
 				"Three new patterns are proposed (hatched); approve or redirect them."
 			],
-			"omitRelationships": ["summaryBudget", "metaBudget", "liveSummary"]
+			"omitRelationships": [
+				"summaryBudget",
+				"metaBudget",
+				"liveSummary"
+			]
 		}
 	],
 	"elements": [
-		{ "id": "web", "kind": "container", "title": "Web app", "subtitle": "Stock pages", "change": "modified" },
+		{
+			"id": "web",
+			"kind": "container",
+			"title": "Web app",
+			"subtitle": "Stock pages",
+			"change": "modified"
+		},
 		{
 			"id": "loader",
 			"kind": "component",
@@ -30,8 +43,13 @@
 			"subtitle": "Awaits rows only; streams metadata seeds",
 			"pattern": "web/ssr-live-page",
 			"change": "modified",
-			"libraries": ["httpClient"],
-			"details": ["Seeds are bound to the viewer and the exact query arguments.", "Metadata seeds are started and caught independently."]
+			"libraries": [
+				"httpClient"
+			],
+			"details": [
+				"Seeds are bound to the viewer and the exact query arguments.",
+				"Metadata seeds are started and caught independently."
+			]
 		},
 		{
 			"id": "owner",
@@ -41,7 +59,9 @@
 			"subtitle": "Current + at most one pending page",
 			"pattern": "web/ssr-live-page",
 			"change": "new",
-			"libraries": ["liveClient"],
+			"libraries": [
+				"liveClient"
+			],
 			"details": "Three automatic empty reads, then an explicit Continue; offscreen pages are never accumulated."
 		},
 		{
@@ -52,7 +72,9 @@
 			"subtitle": "URL page + session start tokens only",
 			"pattern": "web/sealed-page-history",
 			"change": "new",
-			"libraries": ["schemaLib"],
+			"libraries": [
+				"schemaLib"
+			],
 			"details": "Previous/Back read fresh. Unknown ancestry falls back to the first page instead of inventing a previous one."
 		},
 		{
@@ -64,7 +86,13 @@
 			"pattern": "web/ssr-live-page",
 			"change": "modified"
 		},
-		{ "id": "api", "kind": "container", "title": "Backend", "subtitle": "Independent operations", "change": "modified" },
+		{
+			"id": "api",
+			"kind": "container",
+			"title": "Backend",
+			"subtitle": "Independent operations",
+			"change": "modified"
+		},
 		{
 			"id": "page",
 			"kind": "component",
@@ -93,8 +121,16 @@
 			"pattern": "api/tenant-query",
 			"change": "new",
 			"parts": [
-				{ "title": "facets", "pattern": "api/scoped-read", "change": "new" },
-				{ "title": "totals / tags / options", "pattern": "api/tenant-query", "change": "new" }
+				{
+					"title": "facets",
+					"pattern": "api/scoped-read",
+					"change": "new"
+				},
+				{
+					"title": "totals / tags / options",
+					"pattern": "api/tenant-query",
+					"change": "new"
+				}
 			]
 		},
 		{
@@ -105,7 +141,10 @@
 			"subtitle": "Each producer: auth + fresh budget",
 			"pattern": "api/bounded-read",
 			"change": "reused",
-			"details": ["Runs before traversal or cursor opening.", "Hard overflow discards the whole operation."]
+			"details": [
+				"Runs before traversal or cursor opening.",
+				"Hard overflow discards the whole operation."
+			]
 		},
 		{
 			"id": "merge",
@@ -115,8 +154,13 @@
 			"subtitle": "Sku / name / status / bin; one global cut",
 			"pattern": "api/index-merge",
 			"change": "new",
-			"libraries": ["valueCompare"],
-			"details": ["50 rows / 500 candidates are soft targets.", "Finishes tie buckets before cutting."]
+			"libraries": [
+				"valueCompare"
+			],
+			"details": [
+				"50 rows / 500 candidates are soft targets.",
+				"Finishes tie buckets before cutting."
+			]
 		},
 		{
 			"id": "scope",
@@ -135,8 +179,14 @@
 			"subtitle": "Deterministic authenticated encryption",
 			"pattern": "api/sealed-continuation",
 			"change": "new",
-			"libraries": ["sivLib", "schemaLib"],
-			"details": ["Binds actor, tenant and every normalised control.", "Missing key = unavailable; key rotation invalidates saved starts."]
+			"libraries": [
+				"sivLib",
+				"schemaLib"
+			],
+			"details": [
+				"Binds actor, tenant and every normalised control.",
+				"Missing key = unavailable; key rotation invalidates saved starts."
+			]
 		},
 		{
 			"id": "collector",
@@ -147,7 +197,13 @@
 			"pattern": null,
 			"change": "removed"
 		},
-		{ "id": "db", "kind": "container", "title": "Database", "subtitle": "No projection, no backfill", "change": "modified" },
+		{
+			"id": "db",
+			"kind": "container",
+			"title": "Database",
+			"subtitle": "No projection, no backfill",
+			"change": "modified"
+		},
 		{
 			"id": "items",
 			"kind": "data",
@@ -155,19 +211,63 @@
 			"title": "stockItems",
 			"subtitle": "Versioned rows",
 			"pattern": "data/versioned-rows",
-			"patterns": ["data/tenant-scoped"],
+			"patterns": [
+				"data/tenant-scoped"
+			],
 			"change": "modified",
 			"fields": [
-				{ "id": "tenantId", "type": "Id<tenants>", "change": "reused" },
-				{ "id": "sku", "type": "string", "change": "reused" },
-				{ "id": "version", "type": "number", "change": "reused" },
-				{ "id": "name", "type": "string", "change": "reused" },
-				{ "id": "status", "type": "draft | released", "change": "reused" }
+				{
+					"id": "tenantId",
+					"type": "Id<tenants>",
+					"change": "reused"
+				},
+				{
+					"id": "sku",
+					"type": "string",
+					"change": "reused"
+				},
+				{
+					"id": "version",
+					"type": "number",
+					"change": "reused"
+				},
+				{
+					"id": "name",
+					"type": "string",
+					"change": "reused"
+				},
+				{
+					"id": "status",
+					"type": "draft | released",
+					"change": "reused"
+				}
 			],
 			"indexes": [
-				{ "id": "by_tenant_name", "fields": ["tenantId", "name"], "change": "new" },
-				{ "id": "by_tenant_status", "fields": ["tenantId", "status"], "change": "new" },
-				{ "id": "by_tenant_sku_version", "fields": ["tenantId", "sku", "version"], "change": "reused" }
+				{
+					"id": "by_tenant_name",
+					"fields": [
+						"tenantId",
+						"name"
+					],
+					"change": "new"
+				},
+				{
+					"id": "by_tenant_status",
+					"fields": [
+						"tenantId",
+						"status"
+					],
+					"change": "new"
+				},
+				{
+					"id": "by_tenant_sku_version",
+					"fields": [
+						"tenantId",
+						"sku",
+						"version"
+					],
+					"change": "reused"
+				}
 			]
 		},
 		{
@@ -178,13 +278,39 @@
 			"subtitle": "Where an item sits: shelf, bin or zone",
 			"pattern": "data/polymorphic-ref",
 			"change": "reused",
-			"divergence": { "id": "DV-2", "text": "Discriminator and id unions are independent." },
+			"divergence": {
+				"id": "DV-2",
+				"text": "Discriminator and id unions are independent."
+			},
 			"fields": [
-				{ "id": "level", "type": "shelf | bin | zone", "change": "reused" },
-				{ "id": "targetId", "type": "Id<shelf|bin|zone>", "change": "reused" },
-				{ "id": "itemId", "type": "Id<stockItems>", "change": "reused" }
+				{
+					"id": "level",
+					"type": "shelf | bin | zone",
+					"change": "reused"
+				},
+				{
+					"id": "targetId",
+					"type": "Id<shelf|bin|zone>",
+					"change": "reused"
+				},
+				{
+					"id": "itemId",
+					"type": "Id<stockItems>",
+					"change": "reused"
+				}
 			],
-			"ties": [{ "fields": ["level", "targetId"], "label": "level ↔ targetId must agree", "enforcement": "nothing", "change": "reused", "divergence": "DV-2" }]
+			"ties": [
+				{
+					"fields": [
+						"level",
+						"targetId"
+					],
+					"label": "level ↔ targetId must agree",
+					"enforcement": "nothing",
+					"change": "reused",
+					"divergence": "DV-2"
+				}
+			]
 		},
 		{
 			"id": "tags",
@@ -204,32 +330,195 @@
 			"change": "new",
 			"details": "Dev and test slots are provisioned; shared environments need a rollout step before deploy."
 		},
-		{ "id": "sivLib", "kind": "library", "title": "siv-aead", "version": "2.0", "change": "new" },
-		{ "id": "schemaLib", "kind": "library", "title": "schema-validate", "change": "reused" },
-		{ "id": "valueCompare", "kind": "library", "title": "value-compare", "change": "reused" },
-		{ "id": "httpClient", "kind": "library", "title": "http client", "change": "reused" },
-		{ "id": "liveClient", "kind": "library", "title": "live client", "change": "reused" }
+		{
+			"id": "sivLib",
+			"kind": "library",
+			"title": "siv-aead",
+			"version": "2.0",
+			"change": "new"
+		},
+		{
+			"id": "schemaLib",
+			"kind": "library",
+			"title": "schema-validate",
+			"change": "reused"
+		},
+		{
+			"id": "valueCompare",
+			"kind": "library",
+			"title": "value-compare",
+			"change": "reused"
+		},
+		{
+			"id": "httpClient",
+			"kind": "library",
+			"title": "http client",
+			"change": "reused"
+		},
+		{
+			"id": "liveClient",
+			"kind": "library",
+			"title": "live client",
+			"change": "reused"
+		}
 	],
 	"relationships": [
-		{ "id": "seedPage", "from": "loader", "to": "page", "kind": "calls", "change": "new", "label": "await page only", "contract": "pageContract" },
-		{ "id": "seedMeta", "from": "loader", "to": "meta", "kind": "calls", "change": "new", "label": "start + catch independently" },
-		{ "id": "live", "from": "owner", "to": "page", "kind": "subscribes", "change": "new", "label": "immutable args", "contract": "pageContract" },
-		{ "id": "remember", "from": "owner", "to": "history", "kind": "saves", "change": "new", "label": "no rows, no raw cuts" },
-		{ "id": "cardRead", "from": "cards", "to": "summary", "kind": "subscribes", "change": "new", "label": "independent failure" },
-		{ "id": "pageBudget", "from": "page", "to": "budget", "kind": "authorizes", "change": "new", "label": "own fresh budget" },
-		{ "id": "summaryBudget", "from": "summary", "to": "budget", "kind": "authorizes", "change": "new" },
-		{ "id": "metaBudget", "from": "meta", "to": "budget", "kind": "authorizes", "change": "new" },
-		{ "id": "pageMerge", "from": "page", "to": "merge", "kind": "calls", "change": "new" },
-		{ "id": "mergeIndexes", "from": "merge", "to": "items", "kind": "reads", "enforcement": "platform", "change": "new", "label": "native index order — not auth" },
-		{ "id": "mergeScope", "from": "merge", "to": "scope", "kind": "filters", "change": "new", "label": "latest visible, then filters" },
-		{ "id": "summaryScope", "from": "summary", "to": "scope", "kind": "calls", "change": "new" },
-		{ "id": "scopeRefs", "from": "scope", "to": "placements", "kind": "reads", "enforcement": "our-code", "change": "new", "label": "check coherence + visibility" },
-		{ "id": "placementTarget", "from": "placements", "to": "items", "kind": "references", "enforcement": "nothing", "change": "reused", "label": "type and id must agree", "divergence": "DV-2" },
-		{ "id": "mergeTags", "from": "merge", "to": "tags", "kind": "reads", "enforcement": "platform", "change": "new", "label": "typed ids" },
-		{ "id": "sealCut", "from": "merge", "to": "seal", "kind": "seals", "change": "new", "label": "one global cut", "contract": "cursorContract" },
-		{ "id": "secret", "from": "seal", "to": "key", "kind": "reads", "enforcement": "our-code", "change": "new", "label": "fail closed" },
-		{ "id": "retire", "from": "collector", "to": "page", "kind": "replaced-by", "change": "removed", "label": "retired; no fallback" },
-		{ "id": "liveSummary", "from": "owner", "to": "summary", "kind": "subscribes", "change": "new" }
+		{
+			"id": "seedPage",
+			"from": "loader",
+			"to": "page",
+			"kind": "calls",
+			"change": "new",
+			"label": "await page only",
+			"contract": "pageContract"
+		},
+		{
+			"id": "seedMeta",
+			"from": "loader",
+			"to": "meta",
+			"kind": "calls",
+			"change": "new",
+			"label": "start + catch independently"
+		},
+		{
+			"id": "live",
+			"from": "owner",
+			"to": "page",
+			"kind": "subscribes",
+			"change": "new",
+			"label": "immutable args",
+			"contract": "pageContract"
+		},
+		{
+			"id": "remember",
+			"from": "owner",
+			"to": "history",
+			"kind": "saves",
+			"change": "new",
+			"label": "no rows, no raw cuts"
+		},
+		{
+			"id": "cardRead",
+			"from": "cards",
+			"to": "summary",
+			"kind": "subscribes",
+			"change": "new",
+			"label": "independent failure"
+		},
+		{
+			"id": "pageBudget",
+			"from": "page",
+			"to": "budget",
+			"kind": "authorizes",
+			"change": "new",
+			"label": "own fresh budget"
+		},
+		{
+			"id": "summaryBudget",
+			"from": "summary",
+			"to": "budget",
+			"kind": "authorizes",
+			"change": "new"
+		},
+		{
+			"id": "metaBudget",
+			"from": "meta",
+			"to": "budget",
+			"kind": "authorizes",
+			"change": "new"
+		},
+		{
+			"id": "pageMerge",
+			"from": "page",
+			"to": "merge",
+			"kind": "calls",
+			"change": "new"
+		},
+		{
+			"id": "mergeIndexes",
+			"from": "merge",
+			"to": "items",
+			"kind": "reads",
+			"enforcement": "platform",
+			"change": "new",
+			"label": "native index order — not auth"
+		},
+		{
+			"id": "mergeScope",
+			"from": "merge",
+			"to": "scope",
+			"kind": "filters",
+			"change": "new",
+			"label": "latest visible, then filters"
+		},
+		{
+			"id": "summaryScope",
+			"from": "summary",
+			"to": "scope",
+			"kind": "calls",
+			"change": "new"
+		},
+		{
+			"id": "scopeRefs",
+			"from": "scope",
+			"to": "placements",
+			"kind": "reads",
+			"enforcement": "our-code",
+			"change": "new",
+			"label": "check coherence + visibility"
+		},
+		{
+			"id": "placementTarget",
+			"from": "placements",
+			"to": "items",
+			"kind": "references",
+			"enforcement": "nothing",
+			"change": "reused",
+			"label": "type and id must agree",
+			"divergence": "DV-2"
+		},
+		{
+			"id": "mergeTags",
+			"from": "merge",
+			"to": "tags",
+			"kind": "reads",
+			"enforcement": "platform",
+			"change": "new",
+			"label": "typed ids"
+		},
+		{
+			"id": "sealCut",
+			"from": "merge",
+			"to": "seal",
+			"kind": "seals",
+			"change": "new",
+			"label": "one global cut",
+			"contract": "cursorContract"
+		},
+		{
+			"id": "secret",
+			"from": "seal",
+			"to": "key",
+			"kind": "reads",
+			"enforcement": "our-code",
+			"change": "new",
+			"label": "fail closed"
+		},
+		{
+			"id": "retire",
+			"from": "collector",
+			"to": "page",
+			"kind": "replaced-by",
+			"change": "removed",
+			"label": "retired; no fallback"
+		},
+		{
+			"id": "liveSummary",
+			"from": "owner",
+			"to": "summary",
+			"kind": "subscribes",
+			"change": "new"
+		}
 	],
 	"contracts": [
 		{
@@ -255,15 +544,182 @@
 		}
 	],
 	"notes": [
-		{ "on": "budget", "kind": "note", "text": "The shared admission meter predates this change. Callers and ownership change, not the hard ceilings." },
-		{ "on": "key", "kind": "risk", "title": "Rollout step needed", "text": "Shared environments must provision the sealing key before deploy, or every page read returns unavailable." },
-		{ "on": "placementTarget", "kind": "risk", "title": "Existing divergence DV-2", "text": "Read coherence checks do not repair the schema: level and targetId can still disagree. Not fixed here." },
-		{ "on": "summary", "kind": "question", "text": "Scope counts are complete counts, not exact version pins. Is that acceptable for dashboard cards?" }
+		{
+			"id": "n-budget",
+			"on": "budget",
+			"kind": "note",
+			"text": "The shared admission meter predates this change. Callers and ownership change, not the hard ceilings."
+		},
+		{
+			"id": "n-rollout",
+			"on": "key",
+			"kind": "risk",
+			"title": "Rollout step needed",
+			"text": "Shared environments must provision the sealing key before deploy, or every page read returns unavailable."
+		},
+		{
+			"id": "n-dv2",
+			"on": "placementTarget",
+			"kind": "risk",
+			"title": "Existing divergence DV-2",
+			"text": "Read coherence checks do not repair the schema: level and targetId can still disagree. Not fixed here."
+		},
+		{
+			"id": "n-counts",
+			"on": "summary",
+			"kind": "question",
+			"text": "Scope counts are complete counts, not exact version pins. Is that acceptable for dashboard cards?"
+		}
 	],
 	"proposedPatterns": [
-		{ "id": "web/sealed-page-history", "label": "sealed page history", "family": "web", "icon": "history", "colour": "#1e40af" },
-		{ "id": "api/bounded-read", "label": "scope-first bounded read", "family": "api", "icon": "filter", "colour": "#0369a1" },
-		{ "id": "api/index-merge", "label": "native index merge", "family": "api", "icon": "merge", "colour": "#a21caf" },
-		{ "id": "api/sealed-continuation", "label": "sealed continuation", "family": "security", "icon": "seal", "colour": "#be185d" }
+		{
+			"id": "web/sealed-page-history",
+			"label": "sealed page history",
+			"family": "web",
+			"icon": "history",
+			"colour": "#1e40af"
+		},
+		{
+			"id": "api/bounded-read",
+			"label": "scope-first bounded read",
+			"family": "api",
+			"icon": "filter",
+			"colour": "#0369a1"
+		},
+		{
+			"id": "api/index-merge",
+			"label": "native index merge",
+			"family": "api",
+			"icon": "merge",
+			"colour": "#a21caf"
+		},
+		{
+			"id": "api/sealed-continuation",
+			"label": "sealed continuation",
+			"family": "security",
+			"icon": "seal",
+			"colour": "#be185d"
+		}
+	],
+	"tours": [
+		{
+			"id": "review",
+			"title": "Review: bounded pages replace the bulk collector",
+			"summary": "What changes, the two read paths, the proposed patterns, then the risks.",
+			"steps": [
+				{
+					"id": "what-changes",
+					"title": "What changes",
+					"view": "engineering",
+					"highlight": {
+						"change": [
+							"new",
+							"modified",
+							"removed"
+						]
+					},
+					"body": "Every new, modified and removed card is lit; reused context fades.\n\nThe page loader, the live owner and the cards each get their **own** bounded read."
+				},
+				{
+					"id": "page-read",
+					"title": "Page read path",
+					"view": "engineering",
+					"path": [
+						"seedPage",
+						"pageMerge",
+						"mergeIndexes"
+					],
+					"select": "page",
+					"body": "The loader awaits only the page read: `items.page` → index merge → the stock table. One global cut, native index order."
+				},
+				{
+					"id": "summary-read",
+					"title": "Summary read path",
+					"view": "engineering",
+					"path": [
+						"cardRead",
+						"summaryScope",
+						"scopeRefs"
+					],
+					"notes": [
+						"n-counts"
+					],
+					"body": "Dashboard cards subscribe to a summary that filters by scope before counting. Counts are complete, not version-pinned — see the question."
+				},
+				{
+					"id": "budgets",
+					"title": "Each read meters itself",
+					"view": "engineering",
+					"focus": [
+						"meta",
+						"budget"
+					],
+					"notes": [
+						"n-budget"
+					],
+					"body": "Metadata, page and summary each authorise against the existing admission meter. A metadata failure no longer blocks rows.",
+					"path": [
+						"seedPage",
+						"pageBudget"
+					]
+				},
+				{
+					"id": "proposed",
+					"title": "Proposed patterns — approve or redirect",
+					"view": "engineering",
+					"highlight": {
+						"proposed": true
+					},
+					"body": "Four hatched patterns are new to the catalog:\n- sealed page history\n- scope-first bounded read\n- native index merge\n- sealed continuation",
+					"focus": [
+						"history",
+						"budget",
+						"merge",
+						"scope",
+						"seal",
+						"remember"
+					]
+				},
+				{
+					"id": "sealing",
+					"title": "Sealed continuation",
+					"view": "engineering",
+					"path": [
+						"sealCut",
+						"secret"
+					],
+					"select": "seal",
+					"notes": [
+						"n-rollout"
+					],
+					"body": "The cursor is sealed with a deployment key. **Rollout:** every environment needs the key before deploy."
+				},
+				{
+					"id": "removed",
+					"title": "The bulk collector goes",
+					"view": "engineering",
+					"focus": [
+						"collector",
+						"retire"
+					],
+					"select": "collector",
+					"body": "Deleted with no fallback; `items.page` replaces it."
+				},
+				{
+					"id": "divergence",
+					"title": "Existing divergence DV-2",
+					"view": "engineering",
+					"select": "placementTarget",
+					"focus": [
+						"placements",
+						"items"
+					],
+					"notes": [
+						"n-dv2"
+					],
+					"body": "Nothing enforces that a placement points at a real item. This change reads through it but does not fix it."
+				}
+			]
+		}
 	]
 }

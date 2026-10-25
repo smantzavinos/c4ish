@@ -5,6 +5,8 @@ import { buildDiagram, diagramBodySvg, type Diagram } from './diagram.js';
 import { renderLegendSvg } from './legend.js';
 import { numberDisc } from './node.js';
 import type { Scene } from './scene.js';
+import { staticBadgeScale, stepBodySvg, TOUR } from './tour.js';
+import type { FilterState } from '../viewer/state.js';
 import { C, S, T } from './theme.js';
 import { el, esc, g, rect, text, translate } from './svg.js';
 
@@ -22,6 +24,19 @@ export interface RenderOptions {
 	appendix?: boolean;
 	/** Geometry override hook (future pinned-layout sidecar). */
 	override?: (layout: LayoutResult) => LayoutResult;
+	/** Render one tour step: caption instead of the review focus, the step's dimming, path and selection. */
+	tour?: TourRender;
+}
+
+export interface TourRender {
+	tourTitle: string;
+	stepTitle: string;
+	/** Plain-text narration (paragraphs separated by blank lines, `- ` bullets). */
+	body?: string;
+	/** 1-based step number and step count. */
+	index: number;
+	total: number;
+	filter: FilterState;
 }
 
 export interface RenderResult {
@@ -48,7 +63,13 @@ export async function renderView(model: Model, profile: Profile, options: Render
 	const diagramW = d.width;
 	const diagramH = d.height;
 
-	const cards = d.notes.map((n) => measureCallout(n.note, n.num, scene));
+	// during a tour step, notes the step does not name recede (all of them when it names none)
+	const spot = new Set(options.tour?.filter.notes ?? []);
+	const noteKey = (n: Note) => n.id ?? `note:${(model.notes ?? []).indexOf(n) + 1}`;
+	const cards = d.notes.map((n) => {
+		const c = measureCallout(n.note, n.num, scene);
+		return options.tour && !spot.has(noteKey(n.note)) ? { ...c, svg: g(c.svg, { opacity: 0.35 }) } : c;
+	});
 	const key = renderLegendSvg(d.legend, SIDE_W);
 	// Side column (notes, then key) unless the diagram is very wide; then they go below in columns.
 	const side = diagramW / Math.max(diagramH, 1) <= 2.4;
@@ -67,14 +88,18 @@ export async function renderView(model: Model, profile: Profile, options: Render
 	y += 4;
 	out.push(viewBadge(M, y, scene, contentW));
 	y += 24;
-	if (scene.view.focus?.length) {
+	if (options.tour) {
+		const f = stepCaption(options.tour, Math.min(contentW, 1100));
+		out.push(g(f.svg, { transform: translate(M, y) }));
+		y += f.height;
+	} else if (scene.view.focus?.length) {
 		const f = focusCard(scene.view.focus, Math.min(contentW, 1100));
 		out.push(g(f.svg, { transform: translate(M, y) }));
 		y += f.height;
 	}
 	y += 24;
 	const diagramY = y;
-	out.push(g(diagramBodySvg(d), { transform: translate(M, diagramY), class: 'diagram' }));
+	out.push(g(options.tour ? stepBodySvg(d, options.tour.filter, staticBadgeScale(d.width, d.height)) : diagramBodySvg(d), { transform: translate(M, diagramY), class: 'diagram' }));
 	let bottom = diagramY + diagramH;
 
 	const column = (x: number, y0: number, withKey: boolean): number => {
@@ -192,6 +217,37 @@ function viewBadge(x: number, y: number, scene: Scene, maxW: number): string {
 		text(x + 7, y + 11.5, label, { size: 9.5, weight: 700, fill: C.white, letterSpacing: 0.1 }) +
 		(scene.model.title && maxW > 0 ? text(x + w + 10, y + 12, `${scene.model.title} · ${meaning}`, { size: 11, fill: C.muted }) : '')
 	);
+}
+
+function stepCaption(t: TourRender, width: number): { svg: string; height: number } {
+	const out: string[] = [];
+	const inner = width - 36;
+	out.push(text(16, 18, `TOUR · ${t.index} / ${t.total} · ${t.tourTitle.toUpperCase()}`, { size: 9.5, weight: 700, fill: TOUR, letterSpacing: 0.12 }));
+	let y = 42;
+	for (const l of wrap(t.stepTitle, inner, 17, 'b', 2)) {
+		out.push(text(16, y, l, { size: 17, weight: 700, fill: C.ink }));
+		y += 22;
+	}
+	y += 2;
+	for (const para of (t.body ?? '').split(/\n\s*\n/)) {
+		for (const raw of para.split('\n')) {
+			if (!raw.trim()) continue;
+			const bullet = /^\s*[-*]\s+/.test(raw);
+			const line = raw.replace(/^\s*[-*]\s+/, '').trim();
+			const x = bullet ? 30 : 16;
+			if (bullet) out.push(el('circle', { cx: 22, cy: y - 4, r: 2.2, fill: C.ink }));
+			for (const l of wrap(line, inner - (x - 16), 13, 'r', 4)) {
+				out.push(text(x, y, l, { size: 13, fill: C.graphite }));
+				y += 19;
+			}
+		}
+		y += 5;
+	}
+	const height = y + 4;
+	return {
+		svg: rect(0, 0, width, height, { fill: '#eff6ff', stroke: '#bfdbfe', 'stroke-width': 1 }) + rect(0, 0, 4, height, { fill: TOUR }) + out.join(''),
+		height
+	};
 }
 
 function focusCard(items: string[], width: number): { svg: string; height: number } {

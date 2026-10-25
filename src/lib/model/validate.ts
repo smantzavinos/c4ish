@@ -1,4 +1,5 @@
 import { viewMembers } from './view.js';
+import { validateTours } from './tours.js';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Divergence, Element, Model, Profile, Severity, View } from './types.js';
 import { modelSchema, profileSchema } from './schema.js';
@@ -227,6 +228,14 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 		if (notation.colour.nodes === 'pattern' && notation.colour.edges === 'kind')
 			lint('warning', 'colour-meaning', `view kind "${v.kind}" colours cards by pattern AND lines by kind; two palettes compete — colour lines by enforcement or not at all`, `view:${v.id}`);
 		if (notation.forbidSiblingChains) siblingChains(model, v, viewMembers(model, profile, v), elements, (m, at) => lint(rules.siblingChains, 'sibling-chain', m, at));
+	}
+
+	// ---- tours (only when the model is otherwise sound) -------------------------
+	if (!out.some((d) => d.severity === 'error')) {
+		for (const d of validateTours(model, profile)) {
+			if (d.code === 'tour-coverage') lint(rules.tourCoverage, d.code, d.message, d.at);
+			else out.push(d);
+		}
 	}
 	return out;
 }

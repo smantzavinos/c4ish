@@ -212,6 +212,58 @@ export const modelSchema = {
 		proposedPatterns: {
 			type: 'array',
 			items: { ...patternDef, required: ['id', 'label', 'family'] }
+		},
+		tours: {
+			type: 'array',
+			items: {
+				type: 'object',
+				required: ['id', 'title', 'steps'],
+				additionalProperties: false,
+				properties: {
+					id,
+					title: text,
+					summary: text,
+					steps: {
+						type: 'array',
+						minItems: 1,
+						items: {
+							type: 'object',
+							required: ['id', 'title', 'view'],
+							additionalProperties: false,
+							properties: {
+								id,
+								title: text,
+								body: text,
+								view: id,
+								focus: { type: 'array', items: id },
+								select: id,
+								highlight: {
+									type: 'object',
+									additionalProperties: false,
+									properties: {
+										patterns: { type: 'array', items: id },
+										change: { type: 'array', items: id },
+										enforcement: { type: 'array', items: id },
+										proposed: { type: 'boolean' }
+									}
+								},
+								path: {
+									type: 'array',
+									items: {
+										anyOf: [
+											id,
+											{ type: 'object', required: ['jump'], additionalProperties: false, properties: { jump: { const: true }, text } }
+										]
+									}
+								},
+								notes: { type: 'array', items: id },
+								dimOthers: { type: 'boolean' },
+								onlyChanges: { type: 'boolean' }
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 } as const;
@@ -324,6 +376,7 @@ export const profileSchema = {
 				siblingChains: severity,
 				textBudget: severity,
 				removedWithLiveEdges: severity,
+				tourCoverage: severity,
 				titleMaxChars: { type: 'integer' },
 				subtitleMaxChars: { type: 'integer' },
 				labelMaxChars: { type: 'integer' }

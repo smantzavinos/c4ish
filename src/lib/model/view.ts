@@ -42,3 +42,13 @@ export function viewMembers(model: Model, profile: Profile, view: View): Set<str
 	}
 	return included;
 }
+
+/** Relationships drawn in a view: both ends shown, not omitted, not restricted to other views. */
+export function viewRelationships(model: Model, view: View, members: Set<string>): Set<string> {
+	const omit = new Set(view.omitRelationships ?? []);
+	return new Set(
+		(model.relationships ?? [])
+			.filter((r) => !omit.has(r.id) && members.has(r.from) && members.has(r.to) && (!r.views || r.views.includes(view.id)))
+			.map((r) => r.id)
+	);
+}

@@ -31,3 +31,6 @@ vite.config.ts.timestamp-*
 /tmp
 
 .vitest
+
+# Generated rasters are never committed (SVG/html/md are)
+*.png

@@ -19,6 +19,14 @@ export interface FilterState {
 	hover?: string;
 	/** Selected item id (node or edge), shown in the side panel. */
 	selected?: string;
+	/** Tour step: ids lit by the step (elements, relationships). Others dim unless `dimOthers` is false. */
+	spotlight?: string[];
+	/** Tour step: ordered relationship ids, numbered along the connectors. */
+	path?: string[];
+	/** Tour step: dim what the step does not light (default true). */
+	dimOthers?: boolean;
+	/** Tour step: note ids (or `note:<n>`) to emphasise. */
+	notes?: string[];
 }
 
 /** A bundled model (+ profile) the viewer can load. */
@@ -118,12 +126,27 @@ export function classify(d: Diagram, state: FilterState, keys = itemKeys(d)): Ma
 			}
 		}
 	}
-	const focusId = state.hover ?? state.selected;
+	// a tour step lights its spotlight and path (with their endpoints) on top of any highlight
+	const spot = new Set(state.spotlight ?? []);
+	const touring = spot.size > 0 || !!state.path?.length;
+	if (touring) {
+		for (const id of spot) matched.add(id);
+		for (const e of d.edges) {
+			if (state.path?.includes(e.id)) {
+				matched.add(e.id);
+				matched.add(e.from);
+				matched.add(e.to);
+			}
+		}
+	}
+	const dims = highlight.size > 0 || (touring && state.dimOthers !== false);
+	// during a tour the selection opens the panel but does not re-dim around itself; hover still does
+	const focusId = state.hover ?? (touring ? undefined : state.selected);
 	const focus = focusId ? neighbourhood(d, focusId) : undefined;
 	for (const id of ids) {
 		const k = keys.get(id) ?? new Set();
 		let em: Emphasis = 'normal';
-		if (highlight.size && !matched.has(id)) em = 'dim';
+		if (dims && !matched.has(id)) em = 'dim';
 		if (focus) em = focus.has(id) ? 'focus' : 'dim';
 		if (state.onlyChanges && isUnchanged(k) && !(focus?.has(id) && id === focusId)) em = 'hidden';
 		out.set(id, em);

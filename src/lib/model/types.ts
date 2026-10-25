@@ -26,7 +26,58 @@ export interface Model {
 	absences?: Absence[];
 	/** Patterns this model proposes (not yet in the profile catalog). */
 	proposedPatterns?: PatternDef[];
+	/** Scripted review walkthroughs across the views (usually one). */
+	tours?: Tour[];
 }
+
+/**
+ * A guided review: an ordered list of viewer states with narration. Each step is what a person
+ * would do for the reviewer — switch view, select, highlight, trace a path — plus a short text.
+ */
+export interface Tour {
+	id: string;
+	title: string;
+	summary?: string;
+	steps: TourStep[];
+}
+
+export interface TourStep {
+	/** Unique within the tour; used in deep links (`#tour=<tour>&step=<step>`). */
+	id: string;
+	title: string;
+	/** Short markdown narration (a few sentences; **bold**, `code`, lists). */
+	body?: string;
+	/** View id the step is shown in. */
+	view: string;
+	/** Element or relationship ids to spotlight. A frame spotlights everything inside it. */
+	focus?: string[];
+	/** Element or relationship id to select (opens the details panel). */
+	select?: string;
+	/** Light every item matching any of these (same as clicking key rows). */
+	highlight?: TourHighlight;
+	/** Ordered relationship ids, numbered ①②③ along the connectors. `{ "jump": … }` marks an intended gap. */
+	path?: TourPathEntry[];
+	/** Note ids to spotlight (their targets light up; the cards are emphasised). */
+	notes?: string[];
+	/** Dim everything not lit by this step. Default true when focus, path, select, notes or highlight is set. */
+	dimOthers?: boolean;
+	/** Hide reused context (the viewer's "Only changes"). */
+	onlyChanges?: boolean;
+}
+
+export interface TourHighlight {
+	/** Pattern ids (catalogued or proposed). */
+	patterns?: string[];
+	/** Change state ids from the profile (new, modified, removed, …). */
+	change?: string[];
+	/** Enforcement ids from the profile (data connectors). */
+	enforcement?: string[];
+	/** Every element whose pattern is proposed (in `proposedPatterns`). */
+	proposed?: boolean;
+}
+
+/** A relationship id, or an intentional gap between two contiguous runs. */
+export type TourPathEntry = string | { jump: true; text?: string };
 
 export interface View {
 	id: string;
@@ -294,6 +345,8 @@ export interface LintRules {
 	siblingChains?: Severity;
 	textBudget?: Severity;
 	removedWithLiveEdges?: Severity;
+	/** Tour coverage: changed / proposed / risk / divergence items no step shows. Default warning. */
+	tourCoverage?: Severity;
 	titleMaxChars?: number;
 	subtitleMaxChars?: number;
 	labelMaxChars?: number;

@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { check } from '../api.js';
 import type { Diagnostic } from '../model/validate.js';
 import { renderView } from '../render/page.js';
+import { exportTour } from '../render/tour-export.js';
+import { tourCoverage } from '../model/tours.js';
 
 const USAGE = `c4ish — reviewable architecture diagrams of a planned change
 
 Usage:
   c4ish validate <model.json> [--profile p.json] [--strict]
   c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
+  c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
 
 validate  Schema + semantic checks + notation lint. Exit 1 on errors (or warnings with --strict).
 render    Writes SVG. --all renders every view to <out-dir or model dir>/<view>.svg.
           --png also rasterises with ImageMagick (magick) when available.
+tour      Writes one SVG per tour step plus index.html (offline slideshow) and tour.md into
+          --out (default <model dir>/tour; one sub-directory per tour when there are several).
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
 
 interface Args {
@@ -31,7 +36,7 @@ function parse(argv: string[]): Args {
 		if (a.startsWith('--')) {
 			const key = a.slice(2);
 			const next = argv[i + 1];
-			if (['profile', 'view', 'out', 'density'].includes(key) && next !== undefined) {
+			if (['profile', 'view', 'out', 'density', 'tour'].includes(key) && next !== undefined) {
 				flags.set(key, next);
 				i++;
 			} else flags.set(key, true);
@@ -84,6 +89,7 @@ async function main(argv: string[]): Promise<number> {
 		console.error(`${file}: ${errors} error(s), ${warns} warning(s)`);
 		return errors || (flags.has('strict') && warns) ? 1 : 0;
 	}
+	if (cmd === 'tour') return writeTours(file, result, flags);
 	if (cmd !== 'render') {
 		console.error(`unknown command "${cmd}"\n\n${USAGE}`);
 		return 1;
@@ -112,18 +118,57 @@ async function main(argv: string[]): Promise<number> {
 			writeFileSync(md, res.appendix);
 			console.error(`wrote ${md}`);
 		}
-		if (flags.has('png')) {
-			const png = out.replace(/\.svg$/, '') + '.png';
-			const density = typeof flags.get('density') === 'string' ? (flags.get('density') as string) : '110';
-			try {
-				execFileSync('magick', ['-density', density, '-background', 'white', out, png], { stdio: 'inherit' });
-				console.error(`wrote ${png}`);
-			} catch {
-				console.error('warning: PNG skipped (ImageMagick "magick" not available or failed)');
-			}
-		}
+		if (flags.has('png')) toPng(out, flags);
 	}
 	return 0;
+}
+
+function toPng(svgFile: string, flags: Map<string, string | true>): void {
+	const png = svgFile.replace(/\.svg$/, '') + '.png';
+	const density = typeof flags.get('density') === 'string' ? (flags.get('density') as string) : '110';
+	try {
+		execFileSync('magick', ['-density', density, '-background', 'white', svgFile, png], { stdio: 'inherit' });
+		console.error(`wrote ${png}`);
+	} catch {
+		console.error('warning: PNG skipped (ImageMagick "magick" not available or failed)');
+	}
+}
+
+async function writeTours(file: string, result: ReturnType<typeof check>, flags: Map<string, string | true>): Promise<number> {
+	if (!result.ok || !result.model || !result.profile) {
+		console.error(`${file}: tour not exported (errors)`);
+		return 1;
+	}
+	const model = result.model;
+	const wanted = flags.get('tour');
+	const tours = (model.tours ?? []).filter((t) => typeof wanted !== 'string' || t.id === wanted);
+	if (!tours.length) {
+		console.error(`${file}: no ${typeof wanted === 'string' ? `tour "${wanted}"` : 'tours'} in the model`);
+		return 1;
+	}
+	let uncovered = 0;
+	for (const tour of tours) {
+		const cov = tourCoverage(model, result.profile, tour);
+		uncovered += cov.uncovered.length;
+		console.error(`coverage (tour "${tour.id}"): ${cov.items.length - cov.uncovered.length}/${cov.items.length} review items pointed at${cov.uncovered.length ? ` — uncovered: ${cov.uncovered.map((u) => u.id).join(', ')}` : ''}`);
+	}
+	const outFlag = flags.get('out');
+	const root = typeof outFlag === 'string' ? resolve(outFlag) : resolve(dirname(file), 'tour');
+	for (const tour of tours) {
+		const dir = tours.length > 1 ? resolve(root, tour.id) : root;
+		mkdirSync(dir, { recursive: true });
+		const ex = await exportTour(model, result.profile, tour);
+		for (const s of ex.steps) {
+			const out = resolve(dir, s.file);
+			writeFileSync(out, s.svg);
+			console.error(`wrote ${out} (${s.width}×${s.height})`);
+			if (flags.has('png')) toPng(out, flags);
+		}
+		writeFileSync(resolve(dir, 'index.html'), ex.html);
+		writeFileSync(resolve(dir, 'tour.md'), ex.markdown);
+		console.error(`wrote ${resolve(dir, 'index.html')}, tour.md`);
+	}
+	return uncovered && flags.has('strict') ? 1 : 0;
 }
 
 main(process.argv.slice(2)).then(

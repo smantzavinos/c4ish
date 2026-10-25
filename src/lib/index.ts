@@ -16,3 +16,5 @@ export { buildLegend, renderLegendSvg, type Legend, type LegendItem, type Legend
 export { placeLabels } from './render/labels.js';
 export { renderAppendix } from './render/page.js';
 export * from './viewer/state.js';
+export { validateTours, tourCoverage, toursCoverage, stepCovers, stepLit, type TourCoverage, type CoverageItem } from './model/tours.js';
+export { exportTour, type TourExport } from './render/tour-export.js';

@@ -8,6 +8,9 @@
 	import DiagramCanvas from './DiagramCanvas.svelte';
 	import LegendPanel from './LegendPanel.svelte';
 	import Panel from './Panel.svelte';
+	import TourCard from './TourCard.svelte';
+	import { stepBounds } from '../render/tour.js';
+	import { currentStep, explore, gotoStep, startTour, stepFilter, tourFromHash, tourHash, type TourState } from './tour.js';
 	import { classify, initialState, isHighlighted, itemKeys, toggleHighlight, type FilterState, type ViewerExample } from './state.js';
 
 	let { examples = [] }: { examples?: ViewerExample[] } = $props();
@@ -33,9 +36,14 @@
 	let zoom = $state(1);
 	let canvas: DiagramCanvas | undefined = $state();
 	let dragging = $state(false);
+	/** Guided tour (DECISIONS 24): the step drives the same filter state a reviewer reaches by hand. */
+	let tourState: TourState | undefined = $state();
+	let hashPending = typeof location !== 'undefined' && location.hash.includes('tour=') || (typeof location !== 'undefined' && location.hash.includes('step='));
 
 	const checked = $derived(modelJson ? check(modelJson, profileJson) : undefined);
 	const views = $derived(checked?.model?.views ?? []);
+	const tours = $derived(checked?.model?.tours ?? []);
+	const active = $derived(currentStep(tourState, tours));
 
 	$effect(() => {
 		const res = checked;
@@ -53,12 +61,92 @@
 				error = '';
 				filter = pending ?? { ...initialState(), onlyChanges: filter.onlyChanges };
 				pending = undefined;
-				requestAnimationFrame(() => canvas?.fit());
+				const touring = untrack(() => tourState && !tourState.exploring);
+				requestAnimationFrame(() => (touring ? canvas?.focusOn(stepBounds(d, filter), false) : canvas?.fit()));
 			})
 			.catch((e: unknown) => (error = e instanceof Error ? e.message : String(e)));
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// a deep link (#tour=…&step=…) starts the tour once the model is loaded
+	$effect(() => {
+		const m = checked?.model;
+		if (!m || !hashPending) return;
+		hashPending = false;
+		const ts = tourFromHash(location.hash, m.tours ?? []);
+		if (ts) untrack(() => applyStep(ts));
+	});
+
+	$effect(() => {
+		const onHash = () => {
+			const m = checked?.model;
+			if (!m) return;
+			const ts = tourFromHash(location.hash, m.tours ?? []);
+			const cur = untrack(() => tourState);
+			if (ts && (ts.tour !== cur?.tour || ts.index !== cur?.index)) applyStep(ts);
+		};
+		window.addEventListener('hashchange', onHash);
+		return () => window.removeEventListener('hashchange', onHash);
+	});
+
+	/** Show a tour step: switch view if needed, apply its filter state, glide the camera to it. */
+	function applyStep(next: TourState) {
+		const res = checked;
+		const cs = currentStep(next, res?.model?.tours ?? []);
+		if (!res?.model || !res.profile || !cs) return;
+		tourState = { ...next, exploring: false };
+		const f = stepFilter(res.model, res.profile, cs.step);
+		const hash = tourHash(cs.tour.id, cs.step.id);
+		if (location.hash !== hash) history.replaceState(null, '', hash);
+		if (diagram && diagram.scene.view.id === cs.step.view && viewId === cs.step.view) {
+			filter = f;
+			canvas?.focusOn(stepBounds(diagram, f));
+		} else {
+			pending = f;
+			viewId = cs.step.view;
+		}
+	}
+
+	function startOrExit() {
+		if (tourState) return exitTour();
+		if (tours[0]) applyStep(startTour(tours[0]));
+	}
+
+	function exitTour() {
+		tourState = undefined;
+		filter = initialState();
+		if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+		canvas?.fit();
+	}
+
+	/** Any hand interaction during a tour: keep the step, offer "Back to this step". */
+	function touched() {
+		if (tourState) tourState = explore(tourState);
+	}
+
+	function onKey(e: KeyboardEvent) {
+		if (!tourState || !active) return;
+		const t = e.target as HTMLElement | null;
+		if (t && (t.closest('input, select, textarea') || t.isContentEditable)) return;
+		if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+			e.preventDefault();
+			applyStep(gotoStep(tourState, active.tour, tourState.index + 1));
+		} else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+			e.preventDefault();
+			applyStep(gotoStep(tourState, active.tour, tourState.index - 1));
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			exitTour();
+		}
+	}
+
+	const stepNotes = $derived.by(() => {
+		const keys = new Set(filter.notes ?? []);
+		const all = checked?.model?.notes ?? [];
+		if (!diagram || !keys.size) return [];
+		return diagram.notes.filter((n) => keys.has(n.note.id ?? `note:${all.indexOf(n.note) + 1}`));
 	});
 
 	const keys = $derived(diagram ? itemKeys(diagram) : new Map());
@@ -105,6 +193,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <div
 	class="viewer"
 	class:dragging
@@ -134,13 +224,19 @@
 		{#if views.length > 1}
 			<div class="tabs" role="tablist">
 				{#each views as v (v.id)}
-					<button role="tab" aria-selected={diagram?.scene.view.id === v.id} class:active={diagram?.scene.view.id === v.id} title={v.title ?? v.id} onclick={() => (viewId = v.id)}>{v.id}</button>
+					<button role="tab" aria-selected={diagram?.scene.view.id === v.id} class:active={diagram?.scene.view.id === v.id} title={v.title ?? v.id} onclick={() => {
+							touched();
+							viewId = v.id;
+						}}>{v.id}</button>
 				{/each}
 			</div>
 		{/if}
 		<span class="grow"></span>
-		<label class="check"><input type="checkbox" bind:checked={filter.onlyChanges} /> Only changes</label>
-		{#if filter.highlight.length}<button onclick={() => (filter = { ...filter, highlight: [] })}>Clear highlight</button>{/if}
+		{#if tours.length}
+			<button class="tour-btn" class:on={!!tourState} onclick={startOrExit} title={tourState ? 'Exit the guided tour (Esc)' : (tours[0].summary ?? tours[0].title)}>{tourState ? '■ Exit tour' : '▶ Tour'}</button>
+		{/if}
+		<label class="check"><input type="checkbox" checked={filter.onlyChanges} onchange={(e) => { touched(); filter = { ...filter, onlyChanges: e.currentTarget.checked }; }} /> Only changes</label>
+		{#if filter.highlight.length}<button onclick={() => { touched(); filter = { ...filter, highlight: [] }; }}>Clear highlight</button>{/if}
 		<div class="zoom">
 			<button onclick={() => canvas?.zoomBy(1 / 1.25)} aria-label="Zoom out">−</button>
 			<span>{Math.round(zoom * 100)}%</span>
@@ -165,7 +261,12 @@
 						</ul>
 					</div>
 				{/if}
-				<LegendPanel legend={diagram.legend} isOn={(f) => isHighlighted(filter, f)} ontoggle={(f) => (filter = toggleHighlight(filter, f))} />
+				<LegendPanel legend={diagram.legend} isOn={(f) => isHighlighted(filter, f)} ontoggle={(f) => {
+						// during a tour, the key is a temporary override of the step's lighting
+						const base = tourState && !tourState.exploring ? { ...filter, highlight: [], spotlight: undefined, path: undefined } : filter;
+						touched();
+						filter = toggleHighlight(base, f);
+					}} />
 			{/if}
 		</aside>
 		<main class="canvas">
@@ -185,8 +286,12 @@
 					{diagram}
 					{emphasis}
 					selected={filter.selected}
+					path={filter.path ?? []}
 					onhover={(id) => (filter = { ...filter, hover: id })}
-					onselect={(id) => (filter = { ...filter, selected: id, hover: undefined })}
+					onselect={(id) => {
+						if (id !== filter.selected) touched();
+						filter = { ...filter, selected: id, hover: undefined };
+					}}
 				/>
 			{:else if !errors.length && !error}
 				<p class="empty">Drop a model JSON (and optionally a profile JSON) here, or pick an example.</p>
@@ -200,7 +305,24 @@
 				</details>
 			{/if}
 		</main>
-		{#if diagram && filter.selected}
+		{#if active && tourState}
+			<div class="right">
+				<TourCard
+					tour={active.tour}
+					index={tourState.index}
+					exploring={tourState.exploring}
+					notes={stepNotes}
+					onprev={() => applyStep(gotoStep(tourState!, active.tour, tourState!.index - 1))}
+					onnext={() => applyStep(gotoStep(tourState!, active.tour, tourState!.index + 1))}
+					ongoto={(i) => applyStep(gotoStep(tourState!, active.tour, i))}
+					onresume={() => applyStep(tourState!)}
+					onexit={exitTour}
+				/>
+				{#if diagram && filter.selected}
+					<Panel {diagram} id={filter.selected} onselect={(id) => { touched(); filter = { ...filter, selected: id }; }} />
+				{/if}
+			</div>
+		{:else if diagram && filter.selected}
 			<div class="right">
 				<Panel {diagram} id={filter.selected} onselect={(id) => (filter = { ...filter, selected: id })} />
 			</div>
@@ -245,6 +367,15 @@
 	}
 	.brand {
 		font-size: 15px;
+	}
+	.tour-btn {
+		border-color: #2563eb;
+		color: #1d4ed8;
+		font-weight: 600;
+	}
+	.tour-btn.on {
+		background: #2563eb;
+		color: #fff;
 	}
 	.grow {
 		flex: 1;

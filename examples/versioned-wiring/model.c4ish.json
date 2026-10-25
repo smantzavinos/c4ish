@@ -5,7 +5,10 @@
 	"title": "Event contracts: version-pinned wiring",
 	"summary": "Services pin the exact event-contract version they provide or require; the wiring page shows and edits those pins.",
 	"profile": "../profile.c4ish.json",
-	"provenance": { "baseline": "example", "note": "Invented example mirroring a real versioned-entity wiring change." },
+	"provenance": {
+		"baseline": "example",
+		"note": "Invented example mirroring a real versioned-entity wiring change."
+	},
 	"views": [
 		{
 			"id": "product",
@@ -16,7 +19,12 @@
 				"Wiring is between versions, not between names: Billing v2 (draft) moves its pin from v1.0 to v1.1.",
 				"Released versions are frozen: Ledger v1 keeps requiring v1.0 until a new Ledger version is drafted."
 			],
-			"include": ["contract", "billing", "ledger", "page"]
+			"include": [
+				"contract",
+				"billing",
+				"ledger",
+				"page"
+			]
 		},
 		{
 			"id": "engineering",
@@ -28,25 +36,158 @@
 				"Group re-wiring is proposed as a new pattern; approve or redirect it.",
 				"Callers only partly follow the confirmed-tool pattern."
 			],
-			"include": ["web", "api", "db", "tools"]
+			"include": [
+				"web",
+				"api",
+				"db",
+				"tools"
+			]
 		}
 	],
 	"elements": [
-		{ "id": "contract", "kind": "product", "title": "InvoiceIssued", "subtitle": "Event contract", "change": "reused", "views": ["product"] },
-		{ "id": "c10", "kind": "version", "parent": "contract", "title": "v1.0", "subtitle": "Amount + currency", "lifecycle": "released", "change": "reused", "implementedBy": ["contractVersions"] },
-		{ "id": "c11", "kind": "version", "parent": "contract", "title": "v1.1", "subtitle": "Adds tax lines", "lifecycle": "draft", "change": "new", "implementedBy": ["contractVersions"] },
-		{ "id": "billing", "kind": "configuration", "title": "Billing service", "subtitle": "Producer", "change": "reused", "views": ["product"] },
-		{ "id": "billing2", "kind": "version", "area": "system", "parent": "billing", "title": "Billing v2", "subtitle": "Being prepared", "lifecycle": "draft", "change": "modified", "implementedBy": ["pins"], "mappingLabel": "serviceContractPins" },
-		{ "id": "ledger", "kind": "configuration", "title": "Ledger service", "subtitle": "Consumer", "change": "reused", "views": ["product"] },
-		{ "id": "ledger1", "kind": "version", "area": "system", "parent": "ledger", "title": "Ledger v1", "subtitle": "In production", "lifecycle": "released", "change": "reused" },
-		{ "id": "page", "kind": "page", "title": "Contract page", "subtitle": "One page per contract version", "change": "modified", "views": ["product"] },
-		{ "id": "tabOverview", "kind": "page", "parent": "page", "title": "Overview", "change": "reused" },
-		{ "id": "tabWiring", "kind": "page", "parent": "page", "title": "Wiring", "subtitle": "Who provides / requires this version", "change": "new", "implementedBy": ["picker", "wiringRead"] },
-		{ "id": "tabCompare", "kind": "page", "parent": "page", "title": "Compare", "subtitle": "Diff against the version it was created from", "change": "reused" },
-
-		{ "id": "web", "kind": "container", "title": "Web app", "subtitle": "Contract pages", "change": "modified", "views": ["engineering"] },
-		{ "id": "route", "kind": "component", "parent": "web", "title": "Version route", "subtitle": "/contracts/[id]/v/[version]", "pattern": "web/route-actions", "change": "modified" },
-		{ "id": "frame", "kind": "component", "parent": "web", "title": "Version detail frame", "subtitle": "Header, lifecycle, tabs", "pattern": "web/detail-frame", "change": "reused" },
+		{
+			"id": "contract",
+			"kind": "product",
+			"title": "InvoiceIssued",
+			"subtitle": "Event contract",
+			"change": "reused",
+			"views": [
+				"product"
+			]
+		},
+		{
+			"id": "c10",
+			"kind": "version",
+			"parent": "contract",
+			"title": "v1.0",
+			"subtitle": "Amount + currency",
+			"lifecycle": "released",
+			"change": "reused",
+			"implementedBy": [
+				"contractVersions"
+			]
+		},
+		{
+			"id": "c11",
+			"kind": "version",
+			"parent": "contract",
+			"title": "v1.1",
+			"subtitle": "Adds tax lines",
+			"lifecycle": "draft",
+			"change": "new",
+			"implementedBy": [
+				"contractVersions"
+			]
+		},
+		{
+			"id": "billing",
+			"kind": "configuration",
+			"title": "Billing service",
+			"subtitle": "Producer",
+			"change": "reused",
+			"views": [
+				"product"
+			]
+		},
+		{
+			"id": "billing2",
+			"kind": "version",
+			"area": "system",
+			"parent": "billing",
+			"title": "Billing v2",
+			"subtitle": "Being prepared",
+			"lifecycle": "draft",
+			"change": "modified",
+			"implementedBy": [
+				"pins"
+			],
+			"mappingLabel": "serviceContractPins"
+		},
+		{
+			"id": "ledger",
+			"kind": "configuration",
+			"title": "Ledger service",
+			"subtitle": "Consumer",
+			"change": "reused",
+			"views": [
+				"product"
+			]
+		},
+		{
+			"id": "ledger1",
+			"kind": "version",
+			"area": "system",
+			"parent": "ledger",
+			"title": "Ledger v1",
+			"subtitle": "In production",
+			"lifecycle": "released",
+			"change": "reused"
+		},
+		{
+			"id": "page",
+			"kind": "page",
+			"title": "Contract page",
+			"subtitle": "One page per contract version",
+			"change": "modified",
+			"views": [
+				"product"
+			]
+		},
+		{
+			"id": "tabOverview",
+			"kind": "page",
+			"parent": "page",
+			"title": "Overview",
+			"change": "reused"
+		},
+		{
+			"id": "tabWiring",
+			"kind": "page",
+			"parent": "page",
+			"title": "Wiring",
+			"subtitle": "Who provides / requires this version",
+			"change": "new",
+			"implementedBy": [
+				"picker",
+				"wiringRead"
+			]
+		},
+		{
+			"id": "tabCompare",
+			"kind": "page",
+			"parent": "page",
+			"title": "Compare",
+			"subtitle": "Diff against the version it was created from",
+			"change": "reused"
+		},
+		{
+			"id": "web",
+			"kind": "container",
+			"title": "Web app",
+			"subtitle": "Contract pages",
+			"change": "modified",
+			"views": [
+				"engineering"
+			]
+		},
+		{
+			"id": "route",
+			"kind": "component",
+			"parent": "web",
+			"title": "Version route",
+			"subtitle": "/contracts/[id]/v/[version]",
+			"pattern": "web/route-actions",
+			"change": "modified"
+		},
+		{
+			"id": "frame",
+			"kind": "component",
+			"parent": "web",
+			"title": "Version detail frame",
+			"subtitle": "Header, lifecycle, tabs",
+			"pattern": "web/detail-frame",
+			"change": "reused"
+		},
 		{
 			"id": "picker",
 			"kind": "component",
@@ -57,9 +198,34 @@
 			"change": "new",
 			"details": "Lists only versions the viewer can wire; released targets are read-only."
 		},
-		{ "id": "api", "kind": "container", "title": "Backend", "subtitle": "Queries and one guarded write", "change": "modified", "views": ["engineering"] },
-		{ "id": "wiringRead", "kind": "component", "parent": "api", "title": "wiring.forVersion", "subtitle": "Providers + consumers of one version", "pattern": "api/tenant-query", "change": "new" },
-		{ "id": "diff", "kind": "component", "parent": "api", "title": "versions.diff", "subtitle": "Field-level diff", "pattern": "api/tenant-query", "change": "reused" },
+		{
+			"id": "api",
+			"kind": "container",
+			"title": "Backend",
+			"subtitle": "Queries and one guarded write",
+			"change": "modified",
+			"views": [
+				"engineering"
+			]
+		},
+		{
+			"id": "wiringRead",
+			"kind": "component",
+			"parent": "api",
+			"title": "wiring.forVersion",
+			"subtitle": "Providers + consumers of one version",
+			"pattern": "api/tenant-query",
+			"change": "new"
+		},
+		{
+			"id": "diff",
+			"kind": "component",
+			"parent": "api",
+			"title": "versions.diff",
+			"subtitle": "Field-level diff",
+			"pattern": "api/tenant-query",
+			"change": "reused"
+		},
 		{
 			"id": "guard",
 			"kind": "component",
@@ -68,7 +234,10 @@
 			"subtitle": "Draft-only, same tenant, one pin per contract",
 			"pattern": "api/guarded-mutation",
 			"change": "new",
-			"details": ["Rejects writes to released service versions.", "Checks the target contract version is visible to the caller."]
+			"details": [
+				"Rejects writes to released service versions.",
+				"Checks the target contract version is visible to the caller."
+			]
 		},
 		{
 			"id": "rewire",
@@ -79,19 +248,39 @@
 			"pattern": "api/group-rewire",
 			"change": "new"
 		},
-		{ "id": "db", "kind": "container", "title": "Database", "subtitle": "One new table", "change": "modified", "views": ["engineering"] },
+		{
+			"id": "db",
+			"kind": "container",
+			"title": "Database",
+			"subtitle": "One new table",
+			"change": "modified",
+			"views": [
+				"engineering"
+			]
+		},
 		{
 			"id": "contractVersions",
 			"kind": "data",
 			"parent": "db",
 			"title": "contractVersions",
 			"pattern": "data/versioned-rows",
-			"patterns": ["data/tenant-scoped"],
+			"patterns": [
+				"data/tenant-scoped"
+			],
 			"change": "reused",
 			"fields": [
-				{ "id": "contractId", "type": "Id<contracts>" },
-				{ "id": "version", "type": "string" },
-				{ "id": "status", "type": "draft | released" }
+				{
+					"id": "contractId",
+					"type": "Id<contracts>"
+				},
+				{
+					"id": "version",
+					"type": "string"
+				},
+				{
+					"id": "status",
+					"type": "draft | released"
+				}
 			]
 		},
 		{
@@ -101,20 +290,62 @@
 			"title": "serviceContractPins",
 			"subtitle": "One row per (service version, contract)",
 			"pattern": "data/typed-join",
-			"patterns": ["data/tenant-scoped"],
+			"patterns": [
+				"data/tenant-scoped"
+			],
 			"change": "new",
 			"fields": [
-				{ "id": "serviceVersionId", "type": "Id<serviceVersions>", "change": "new" },
-				{ "id": "contractVersionId", "type": "Id<contractVersions>", "change": "new" },
-				{ "id": "role", "type": "provides | requires", "change": "new" }
+				{
+					"id": "serviceVersionId",
+					"type": "Id<serviceVersions>",
+					"change": "new"
+				},
+				{
+					"id": "contractVersionId",
+					"type": "Id<contractVersions>",
+					"change": "new"
+				},
+				{
+					"id": "role",
+					"type": "provides | requires",
+					"change": "new"
+				}
 			],
 			"indexes": [
-				{ "id": "by_service_version", "fields": ["serviceVersionId"], "change": "new" },
-				{ "id": "by_contract_version", "fields": ["contractVersionId"], "change": "new" }
+				{
+					"id": "by_service_version",
+					"fields": [
+						"serviceVersionId"
+					],
+					"change": "new"
+				},
+				{
+					"id": "by_contract_version",
+					"fields": [
+						"contractVersionId"
+					],
+					"change": "new"
+				}
 			]
 		},
-		{ "id": "serviceVersions", "kind": "data", "parent": "db", "title": "serviceVersions", "pattern": "data/versioned-rows", "change": "reused" },
-		{ "id": "tools", "kind": "container", "title": "Operator tools", "subtitle": "Existing callers", "change": "modified", "views": ["engineering"] },
+		{
+			"id": "serviceVersions",
+			"kind": "data",
+			"parent": "db",
+			"title": "serviceVersions",
+			"pattern": "data/versioned-rows",
+			"change": "reused"
+		},
+		{
+			"id": "tools",
+			"kind": "container",
+			"title": "Operator tools",
+			"subtitle": "Existing callers",
+			"change": "modified",
+			"views": [
+				"engineering"
+			]
+		},
 		{
 			"id": "cli",
 			"kind": "caller",
@@ -125,31 +356,170 @@
 			"patternFit": "partial",
 			"change": "modified",
 			"parts": [
-				{ "title": "dry-run + confirm", "pattern": "api/confirmed-tool", "change": "reused" },
-				{ "title": "raw CSV import", "pattern": null, "change": "modified" }
+				{
+					"title": "dry-run + confirm",
+					"pattern": "api/confirmed-tool",
+					"change": "reused"
+				},
+				{
+					"title": "raw CSV import",
+					"pattern": null,
+					"change": "modified"
+				}
 			]
 		}
 	],
 	"relationships": [
-		{ "id": "b2provides11", "from": "billing2", "to": "c11", "kind": "provides", "change": "new", "delta": "added", "label": "pin moves here" },
-		{ "id": "b2provides10", "from": "billing2", "to": "c10", "kind": "provides", "change": "removed", "delta": "removed", "label": "old pin" },
-		{ "id": "l1requires10", "from": "ledger1", "to": "c10", "kind": "requires", "change": "reused", "label": "frozen" },
-		{ "id": "c11from10", "from": "c11", "to": "c10", "kind": "created-from", "change": "new" },
-		{ "id": "tabShows", "from": "tabWiring", "to": "c11", "kind": "selects", "change": "new", "label": "shows pins of this version" },
-
-		{ "id": "routeFrame", "from": "route", "to": "frame", "kind": "composes", "change": "reused" },
-		{ "id": "framePicker", "from": "frame", "to": "picker", "kind": "composes", "change": "new" },
-		{ "id": "routeRead", "from": "route", "to": "wiringRead", "kind": "calls", "change": "new", "label": "load providers + consumers" },
-		{ "id": "routeDiff", "from": "route", "to": "diff", "kind": "calls", "change": "reused" },
-		{ "id": "pickerWrite", "from": "picker", "to": "guard", "kind": "submits", "change": "new", "label": "set / clear pin", "contract": "setPin" },
-		{ "id": "rewireGuard", "from": "rewire", "to": "guard", "kind": "authorizes", "change": "new", "label": "per-pin checks" },
-		{ "id": "pickerRewire", "from": "picker", "to": "rewire", "kind": "submits", "change": "new", "label": "move all pins" },
-		{ "id": "guardWrites", "from": "guard", "to": "pins", "kind": "writes", "enforcement": "our-code", "change": "new", "label": "only write path" },
-		{ "id": "readPins", "from": "wiringRead", "to": "pins", "kind": "reads", "enforcement": "platform", "change": "new", "label": "by_contract_version" },
-		{ "id": "pinContract", "from": "pins", "to": "contractVersions", "kind": "pins", "enforcement": "platform", "change": "new", "fromField": "contractVersionId", "label": "typed id" },
-		{ "id": "pinService", "from": "pins", "to": "serviceVersions", "kind": "pins", "enforcement": "platform", "change": "new", "fromField": "serviceVersionId", "label": "typed id" },
-		{ "id": "diffRead", "from": "diff", "to": "contractVersions", "kind": "reads", "enforcement": "platform", "change": "reused" },
-		{ "id": "cliWrites", "from": "cli", "to": "pins", "kind": "writes", "enforcement": "nothing", "change": "modified", "label": "raw import bypasses guard" }
+		{
+			"id": "b2provides11",
+			"from": "billing2",
+			"to": "c11",
+			"kind": "provides",
+			"change": "new",
+			"delta": "added",
+			"label": "pin moves here"
+		},
+		{
+			"id": "b2provides10",
+			"from": "billing2",
+			"to": "c10",
+			"kind": "provides",
+			"change": "removed",
+			"delta": "removed",
+			"label": "old pin"
+		},
+		{
+			"id": "l1requires10",
+			"from": "ledger1",
+			"to": "c10",
+			"kind": "requires",
+			"change": "reused",
+			"label": "frozen"
+		},
+		{
+			"id": "c11from10",
+			"from": "c11",
+			"to": "c10",
+			"kind": "created-from",
+			"change": "new"
+		},
+		{
+			"id": "tabShows",
+			"from": "tabWiring",
+			"to": "c11",
+			"kind": "selects",
+			"change": "new",
+			"label": "shows pins of this version"
+		},
+		{
+			"id": "routeFrame",
+			"from": "route",
+			"to": "frame",
+			"kind": "composes",
+			"change": "reused"
+		},
+		{
+			"id": "framePicker",
+			"from": "frame",
+			"to": "picker",
+			"kind": "composes",
+			"change": "new"
+		},
+		{
+			"id": "routeRead",
+			"from": "route",
+			"to": "wiringRead",
+			"kind": "calls",
+			"change": "new",
+			"label": "load providers + consumers"
+		},
+		{
+			"id": "routeDiff",
+			"from": "route",
+			"to": "diff",
+			"kind": "calls",
+			"change": "reused"
+		},
+		{
+			"id": "pickerWrite",
+			"from": "picker",
+			"to": "guard",
+			"kind": "submits",
+			"change": "new",
+			"label": "set / clear pin",
+			"contract": "setPin"
+		},
+		{
+			"id": "rewireGuard",
+			"from": "rewire",
+			"to": "guard",
+			"kind": "authorizes",
+			"change": "new",
+			"label": "per-pin checks"
+		},
+		{
+			"id": "pickerRewire",
+			"from": "picker",
+			"to": "rewire",
+			"kind": "submits",
+			"change": "new",
+			"label": "move all pins"
+		},
+		{
+			"id": "guardWrites",
+			"from": "guard",
+			"to": "pins",
+			"kind": "writes",
+			"enforcement": "our-code",
+			"change": "new",
+			"label": "only write path"
+		},
+		{
+			"id": "readPins",
+			"from": "wiringRead",
+			"to": "pins",
+			"kind": "reads",
+			"enforcement": "platform",
+			"change": "new",
+			"label": "by_contract_version"
+		},
+		{
+			"id": "pinContract",
+			"from": "pins",
+			"to": "contractVersions",
+			"kind": "pins",
+			"enforcement": "platform",
+			"change": "new",
+			"fromField": "contractVersionId",
+			"label": "typed id"
+		},
+		{
+			"id": "pinService",
+			"from": "pins",
+			"to": "serviceVersions",
+			"kind": "pins",
+			"enforcement": "platform",
+			"change": "new",
+			"fromField": "serviceVersionId",
+			"label": "typed id"
+		},
+		{
+			"id": "diffRead",
+			"from": "diff",
+			"to": "contractVersions",
+			"kind": "reads",
+			"enforcement": "platform",
+			"change": "reused"
+		},
+		{
+			"id": "cliWrites",
+			"from": "cli",
+			"to": "pins",
+			"kind": "writes",
+			"enforcement": "nothing",
+			"change": "modified",
+			"label": "raw import bypasses guard"
+		}
 	],
 	"contracts": [
 		{
@@ -164,15 +534,169 @@
 		}
 	],
 	"notes": [
-		{ "on": "b2provides11", "kind": "focus", "title": "The pin moves", "text": "Billing v2 is a draft, so its provider pin can move from v1.0 to v1.1. Ledger v1 still requires v1.0." },
-		{ "on": "cliWrites", "kind": "risk", "title": "Second write path", "text": "The admin CLI's raw CSV import writes pins directly. Until it calls the guard, one-pin-per-contract rests on convention." },
-		{ "on": "rewire", "kind": "question", "text": "Should group re-wire be a shared pattern, or stay local to this feature?" }
+		{
+			"id": "n-pin",
+			"on": "b2provides11",
+			"kind": "focus",
+			"title": "The pin moves",
+			"text": "Billing v2 is a draft, so its provider pin can move from v1.0 to v1.1. Ledger v1 still requires v1.0."
+		},
+		{
+			"id": "n-cli",
+			"on": "cliWrites",
+			"kind": "risk",
+			"title": "Second write path",
+			"text": "The admin CLI's raw CSV import writes pins directly. Until it calls the guard, one-pin-per-contract rests on convention."
+		},
+		{
+			"id": "n-rewire",
+			"on": "rewire",
+			"kind": "question",
+			"text": "Should group re-wire be a shared pattern, or stay local to this feature?"
+		}
 	],
 	"absences": [
-		{ "id": "noHistory", "parent": "db", "text": "No pin history table: past wiring is read from released versions.", "views": ["engineering"] }
+		{
+			"id": "noHistory",
+			"parent": "db",
+			"text": "No pin history table: past wiring is read from released versions.",
+			"views": [
+				"engineering"
+			]
+		}
 	],
 	"proposedPatterns": [
-		{ "id": "web/version-picker", "label": "version picker", "family": "web", "icon": "version", "colour": "#1e40af" },
-		{ "id": "api/group-rewire", "label": "group re-wire", "family": "api", "icon": "merge", "colour": "#a21caf" }
+		{
+			"id": "web/version-picker",
+			"label": "version picker",
+			"family": "web",
+			"icon": "version",
+			"colour": "#1e40af"
+		},
+		{
+			"id": "api/group-rewire",
+			"label": "group re-wire",
+			"family": "api",
+			"icon": "merge",
+			"colour": "#a21caf"
+		}
+	],
+	"tours": [
+		{
+			"id": "review",
+			"title": "Review: wiring writes and the version page",
+			"summary": "The product change first, then the write and read paths, the proposals and the open risk.",
+			"steps": [
+				{
+					"id": "product-change",
+					"title": "What changes for the user",
+					"view": "product",
+					"highlight": {
+						"change": [
+							"new",
+							"modified",
+							"removed"
+						]
+					},
+					"body": "Contract **v1.1** is new; Billing v2 (a draft) moves its pin; the contract page gains a **Wiring** tab.",
+					"focus": [
+						"page",
+						"tabWiring"
+					]
+				},
+				{
+					"id": "pin-moves",
+					"title": "The pin moves",
+					"view": "product",
+					"path": [
+						"b2provides11",
+						"c11from10"
+					],
+					"notes": [
+						"n-pin"
+					],
+					"body": "Billing v2 now provides v1.1, which was created from v1.0."
+				},
+				{
+					"id": "frozen",
+					"title": "Released versions stay frozen",
+					"view": "product",
+					"focus": [
+						"b2provides10",
+						"l1requires10",
+						"ledger1"
+					],
+					"body": "The old v1.0 pin from Billing v2 is removed. Ledger v1 is released, so it keeps requiring v1.0."
+				},
+				{
+					"id": "eng-change",
+					"title": "Engineering: what changes",
+					"view": "engineering",
+					"highlight": {
+						"change": [
+							"new",
+							"modified",
+							"removed"
+						]
+					},
+					"body": "One new table of pins, one guarded mutation, a new read query and a proposed picker."
+				},
+				{
+					"id": "write-path",
+					"title": "Write path",
+					"view": "engineering",
+					"path": [
+						"routeFrame",
+						"framePicker",
+						"pickerWrite",
+						"guardWrites",
+						"pinContract"
+					],
+					"select": "guard",
+					"body": "Every pin write from the page goes through the **wiring guard**: draft-only, same tenant, one pin per contract."
+				},
+				{
+					"id": "read-path",
+					"title": "Read path",
+					"view": "engineering",
+					"path": [
+						"routeRead",
+						"readPins",
+						"pinService"
+					],
+					"body": "The wiring tab reads pins with a tenant query and joins to service versions."
+				},
+				{
+					"id": "proposed",
+					"title": "Proposed patterns — approve or redirect",
+					"view": "engineering",
+					"highlight": {
+						"proposed": true
+					},
+					"path": [
+						"pickerRewire",
+						"rewireGuard"
+					],
+					"notes": [
+						"n-rewire"
+					],
+					"body": "**Version picker** and **group re-wire** are proposed. Group re-wire still goes through the guard."
+				},
+				{
+					"id": "risk",
+					"title": "Risk: a second write path",
+					"view": "engineering",
+					"select": "cliWrites",
+					"focus": [
+						"tools",
+						"cli"
+					],
+					"notes": [
+						"n-cli"
+					],
+					"body": "The admin CLI writes pins directly; nothing enforces one pin per contract on that path."
+				}
+			]
+		}
 	]
 }
