@@ -24,6 +24,15 @@ export class ElkLayoutEngine implements LayoutEngine {
 		const byId = new Map<string, ElkNode>();
 		const roots: ElkNode[] = [];
 		const hasChildren = new Set(input.nodes.filter((n) => n.parent).map((n) => n.parent!));
+		// ELK reads spacing from each compound node itself (no inheritance), so every graph level gets it.
+		const spacingOptions: LayoutOptions = {
+			'elk.spacing.nodeNode': String(spacing.node),
+			'elk.layered.spacing.nodeNodeBetweenLayers': String(spacing.layer),
+			'elk.spacing.edgeNode': String(Math.round(spacing.edge * 1.5)),
+			'elk.spacing.edgeEdge': String(spacing.edge),
+			'elk.layered.spacing.edgeNodeBetweenLayers': String(Math.round(spacing.edge * 1.5)),
+			'elk.layered.spacing.edgeEdgeBetweenLayers': String(spacing.edge)
+		};
 
 		for (const n of input.nodes) {
 			if (n.fixed) warnings.push(`elk: fixed position for "${n.id}" ignored (pins are not supported yet)`);
@@ -33,6 +42,7 @@ export class ElkLayoutEngine implements LayoutEngine {
 				node.layoutOptions!['elk.padding'] = `[top=${p.top},left=${p.left},bottom=${p.bottom},right=${p.right}]`;
 				node.layoutOptions!['elk.nodeSize.constraints'] = 'MINIMUM_SIZE';
 				node.layoutOptions!['elk.nodeSize.minimum'] = `(${n.minWidth ?? n.width},${p.top + p.bottom + 24})`;
+				Object.assign(node.layoutOptions!, spacingOptions);
 				node.children = [];
 			} else {
 				node.width = n.width;
@@ -75,12 +85,7 @@ export class ElkLayoutEngine implements LayoutEngine {
 				'elk.edgeRouting': 'ORTHOGONAL',
 				'elk.json.edgeCoords': 'ROOT',
 				'elk.json.shapeCoords': 'ROOT',
-				'elk.spacing.nodeNode': String(spacing.node),
-				'elk.layered.spacing.nodeNodeBetweenLayers': String(spacing.layer),
-				'elk.spacing.edgeNode': String(Math.round(spacing.edge * 1.5)),
-				'elk.spacing.edgeEdge': String(spacing.edge),
-				'elk.layered.spacing.edgeNodeBetweenLayers': String(Math.round(spacing.edge * 1.5)),
-				'elk.layered.spacing.edgeEdgeBetweenLayers': String(spacing.edge),
+				...spacingOptions,
 				'elk.spacing.edgeLabel': '4',
 				'elk.spacing.labelNode': '6',
 				'elk.edgeLabels.placement': 'CENTER',

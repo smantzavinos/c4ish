@@ -46,7 +46,8 @@ export interface View {
 	fields?: 'all' | 'changed' | 'none';
 }
 
-export type Direction = 'right' | 'down' | 'left' | 'up';
+/** `auto` lays out both top-down and left-right and keeps the better result. */
+export type Direction = 'right' | 'down' | 'left' | 'up' | 'auto';
 
 export interface Element {
 	id: string;
@@ -221,6 +222,8 @@ export interface PatternDef {
 	/** "catalogued" (default) or "proposed". */
 	status?: 'catalogued' | 'proposed';
 	icon?: string;
+	/** Node colour for this pattern (default: the family colour). */
+	colour?: string;
 	catalog?: string;
 	description?: string;
 }

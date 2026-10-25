@@ -17,7 +17,7 @@ const divergence = {
 		}
 	]
 };
-const direction = { enum: ['right', 'down', 'left', 'up'] };
+const direction = { enum: ['right', 'down', 'left', 'up', 'auto'] };
 const lineStyle = { enum: ['solid', 'dashed', 'dotted', 'long-dash', 'double'] };
 const colour = { type: 'string', pattern: '^#[0-9a-fA-F]{3,8}$' };
 const severity = { enum: ['error', 'warning', 'off'] };
@@ -32,6 +32,7 @@ const patternDef = {
 		family: text,
 		status: { enum: ['catalogued', 'proposed'] },
 		icon: text,
+		colour,
 		catalog: text,
 		description: text
 	}

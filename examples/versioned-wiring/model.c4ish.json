@@ -172,7 +172,7 @@
 		{ "id": "noHistory", "parent": "db", "text": "No pin history table: past wiring is read from released versions.", "views": ["engineering"] }
 	],
 	"proposedPatterns": [
-		{ "id": "web/version-picker", "label": "version picker", "family": "web", "icon": "version" },
-		{ "id": "api/group-rewire", "label": "group re-wire", "family": "api", "icon": "merge" }
+		{ "id": "web/version-picker", "label": "version picker", "family": "web", "icon": "version", "colour": "#1e40af" },
+		{ "id": "api/group-rewire", "label": "group re-wire", "family": "api", "icon": "merge", "colour": "#a21caf" }
 	]
 }

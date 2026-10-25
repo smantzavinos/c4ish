@@ -12,6 +12,8 @@ export type ChangeStyle = 'new' | 'modified' | 'reused' | 'removed';
 export interface Used {
 	change: Set<ChangeStyle>;
 	patterns: Map<string, number>;
+	/** Patterns that give at least one card its colour (the rest only appear as chips). */
+	primary: Set<string>;
 	noPattern: boolean;
 	partial: boolean;
 	lifecycle: Set<string>;
@@ -30,6 +32,7 @@ export function newUsed(): Used {
 	return {
 		change: new Set(),
 		patterns: new Map(),
+		primary: new Set(),
 		noPattern: false,
 		partial: false,
 		lifecycle: new Set(),
@@ -53,6 +56,8 @@ export interface DrawCtx {
 	detailTags: Map<string, string>;
 	/** Callout numbers per target id. */
 	calloutNumbers: Map<string, number[]>;
+	/** Hatch fills used (key `colour|density` → pattern id); emitted into <defs>. */
+	hatches: Map<string, string>;
 }
 
 export function changeStyle(profile: Profile, change: string | undefined): ChangeStyle {
@@ -298,136 +303,157 @@ export interface Measured {
 	fieldOffsets?: Map<string, number>;
 }
 
-const BADGE_FONT = 9;
+const BADGE_FONT = 9.5;
 
-function badgeWidth(label: string | undefined): number {
+export function badgeWidth(label: string | undefined): number {
 	return label ? Math.ceil(measure(label, BADGE_FONT, 'b', 0.06) + 12) : 0;
 }
 
-function drawBadge(x: number, y: number, label: string, style: ChangeStyle): string {
+/** Change badge: NEW solid ink, MODIFIED outlined ink, REMOVED solid graphite. */
+export function drawBadge(x: number, y: number, label: string, style: ChangeStyle): string {
 	const w = badgeWidth(label);
-	const h = 16;
-	let fill: string = C.white;
+	const h = 17;
+	let fill: string = C.ink;
 	let stroke: string = C.ink;
-	let fg: string = C.ink;
-	let dash: string | undefined;
+	let fg: string = C.white;
 	if (style === 'modified') {
 		fill = C.white;
-		stroke = C.graphite;
-		fg = C.graphite;
+		fg = C.ink;
 	} else if (style === 'removed') {
-		fill = C.white;
-		stroke = C.faint;
-		fg = C.muted;
-		dash = '2 2';
+		fill = C.slate;
+		stroke = C.slate;
 	} else if (style === 'reused') {
 		fill = C.white;
 		stroke = C.line;
 		fg = C.muted;
 	}
 	return (
-		rect(x, y, w, h, { rx: 8, fill, stroke, 'stroke-width': 1, 'stroke-dasharray': dash }) +
-		text(x + w / 2, y + 11.2, label, { size: BADGE_FONT, weight: 700, fill: fg, anchor: 'middle', letterSpacing: 0.06 })
+		rect(x, y, w, h, { rx: 2, fill, stroke, 'stroke-width': 1.25 }) +
+		text(x + w / 2, y + 12, label, { size: BADGE_FONT, weight: 700, fill: fg, anchor: 'middle', letterSpacing: 0.06 })
 	);
 }
 
+/** Darken a hex colour towards black (f = 0 → unchanged, 1 → black). */
+export function shade(hex: string, f: number): string {
+	const h = hex.replace('#', '');
+	const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h.slice(0, 6);
+	const n = parseInt(full, 16);
+	const mix = (c: number) => Math.round(c * (1 - f));
+	return `#${((1 << 24) | (mix((n >> 16) & 255) << 16) | (mix((n >> 8) & 255) << 8) | mix(n & 255)).toString(16).slice(1)}`;
+}
+
+/** Hatch fill in a given colour; registered in ctx so the page can emit <defs>. */
+export function hatchFill(ctx: DrawCtx, colour: string, density: 'light' | 'strong' = 'light'): string {
+	const key = `${colour}|${density}`;
+	let id = ctx.hatches.get(key);
+	if (!id) {
+		id = `${ctx.prefix}hatch-${colour.replace(/[^a-z0-9]/gi, '')}-${density}`;
+		ctx.hatches.set(key, id);
+	}
+	return `url(#${id})`;
+}
+
+export function hatchDefs(ctx: DrawCtx): string {
+	return [...ctx.hatches.entries()]
+		.map(([key, id]) => {
+			const [colour, density] = key.split('|');
+			const bg = density === 'light' ? tint(colour, 0.06) : C.white;
+			const stroke = density === 'light' ? tint(colour, 0.38) : colour;
+			return el(
+				'pattern',
+				{ id, width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' },
+				rect(0, 0, 6, 6, { fill: bg }) + line(0, 0, 0, 6, { stroke, 'stroke-width': density === 'light' ? 2.2 : 1.6 })
+			);
+		})
+		.join('');
+}
+
+/** What gives a card its identity: the pattern (engineering) or the model area (product). */
+export interface Identity {
+	colour?: string;
+	/** Small-caps line above the title. */
+	label?: string;
+	icon: string;
+	proposed: boolean;
+	/** Deliberately no pattern. */
+	none: boolean;
+	partial: boolean;
+}
+
+export function identity(n: SceneNode, scene: Scene): Identity {
+	const { profile, notation } = scene;
+	const e = n.el;
+	const kindDef = profile.elementKinds[e.kind];
+	const kindIcon = kindDef?.icon ?? 'component';
+	const p = e.pattern ? scene.patterns.get(e.pattern) : undefined;
+	const fam = p ? profile.patternFamilies[p.family] : undefined;
+	const partial = e.patternFit === 'partial';
+	if (notation.colour.nodes === 'area') {
+		const area = n.area ? profile.areas[n.area] : undefined;
+		return { colour: area?.colour, label: (kindDef?.label ?? e.kind).toUpperCase(), icon: kindIcon, proposed: false, none: false, partial };
+	}
+	if (e.pattern === null) return { label: 'NO PATTERN', icon: kindIcon, proposed: false, none: true, partial };
+	if (!e.pattern) return { icon: kindIcon, proposed: false, none: false, partial };
+	const colour = notation.colour.nodes === 'pattern' ? (p?.colour ?? fam?.colour) : undefined;
+	const name = (p?.label ?? e.pattern).toUpperCase();
+	return {
+		colour,
+		label: p?.status === 'proposed' ? `PROPOSED · ${name}` : name,
+		icon: p?.icon ?? fam?.icon ?? kindIcon,
+		proposed: p?.status === 'proposed',
+		none: false,
+		partial
+	};
+}
+
 interface CardStyle {
-	band: string;
 	border: string;
 	borderWidth: number;
 	dash?: string;
 	fill: string;
 	title: string;
 	body: string;
-	iconTile: string;
-	iconGlyph: string;
-	onDark: boolean;
 	strike: boolean;
+	/** Whole-card opacity (reused context recedes). */
+	opacity: number;
 }
 
 function cardStyle(n: SceneNode, scene: Scene): CardStyle {
-	const { profile, notation } = scene;
+	const { profile } = scene;
 	const style = changeStyle(profile, n.el.change);
-	const areaDef = notation.colour.nodes === 'area' && n.area ? profile.areas[n.area] : undefined;
-	const pattern = n.el.pattern ? scene.patterns.get(n.el.pattern) : undefined;
-	const famColour =
-		notation.colour.nodes === 'pattern' && pattern ? profile.patternFamilies[pattern.family]?.colour : undefined;
-	const base: CardStyle = {
-		band: C.white,
-		border: areaDef?.colour ?? C.line,
-		borderWidth: 1,
-		fill: C.white,
-		title: C.slate,
-		body: C.muted,
-		iconTile: famColour ?? C.surface,
-		iconGlyph: famColour ? C.white : C.muted,
-		onDark: false,
-		strike: false
-	};
-	if (style === 'new') {
-		Object.assign(base, {
-			band: C.inkBand,
-			border: areaDef?.colour ?? C.ink,
-			borderWidth: 1.75,
-			title: C.white,
-			body: C.slate,
-			iconTile: famColour ?? 'rgba(255,255,255,0.14)',
-			iconGlyph: C.white,
-			onDark: true
-		});
-	} else if (style === 'modified') {
-		Object.assign(base, {
-			band: C.modifiedBand,
-			border: areaDef?.colour ?? C.graphite,
-			borderWidth: 1.5,
-			title: C.ink,
-			body: C.slate,
-			iconTile: famColour ?? C.white,
-			iconGlyph: famColour ? C.white : C.graphite
-		});
-	} else if (style === 'removed') {
-		Object.assign(base, {
-			band: C.surface,
-			border: C.faint,
-			borderWidth: 1.25,
-			dash: '5 4',
-			fill: C.surface,
-			title: C.faint,
-			body: C.faint,
-			iconTile: C.white,
-			iconGlyph: C.faint,
-			strike: true
-		});
-	}
+	const base: CardStyle = { border: C.ink, borderWidth: 1.5, fill: C.white, title: C.ink, body: C.slate, strike: false, opacity: 1 };
+	if (style === 'reused') Object.assign(base, { border: C.faint, borderWidth: 1, opacity: 0.5 });
+	else if (style === 'removed') Object.assign(base, { border: C.slate, borderWidth: 1.75, dash: '6 4', fill: C.surface, title: C.slate, body: C.muted, strike: true });
 	if (style !== 'removed' && n.el.lifecycle) {
 		const lc = profile.lifecycle[n.el.lifecycle];
 		if (lc) {
 			base.border = lc.colour;
 			base.dash = lc.border === 'dashed' ? '6 4' : undefined;
-			base.borderWidth = Math.max(base.borderWidth, 1.5);
+			base.borderWidth = Math.max(base.borderWidth, 1.75);
 			if (lc.fill) base.fill = lc.fill;
 		}
 	}
 	return base;
 }
 
-function elementChips(n: SceneNode, scene: Scene, used: Used, includeLifecycle = true): Chip[] {
+function elementChips(n: SceneNode, scene: Scene, used: Used, includeLifecycle = true, includePrimary = false): Chip[] {
 	const { profile, notation } = scene;
 	const e = n.el;
 	const chips: Chip[] = [];
 	const colourNodes = notation.colour.nodes === 'pattern';
 	if (e.pattern) {
 		const p = scene.patterns.get(e.pattern);
-		chips.push(patternChip(p, e.pattern, profile, colourNodes, e.patternFit === 'partial'));
+		if (includePrimary) chips.push(patternChip(p, e.pattern, profile, colourNodes, e.patternFit === 'partial'));
+		used.primary.add(e.pattern);
 		used.patterns.set(e.pattern, (used.patterns.get(e.pattern) ?? 0) + 1);
 		if (e.patternFit === 'partial') used.partial = true;
 	} else if (e.pattern === null) {
-		chips.push(chip({ kind: 'nopattern', text: 'no pattern' }));
+		if (includePrimary) chips.push(chip({ kind: 'nopattern', text: 'no pattern' }));
 		used.noPattern = true;
 	}
 	for (const pid of e.patterns ?? []) {
 		const p = scene.patterns.get(pid);
-		chips.push(chip({ kind: 'secondary', text: p?.label ?? pid }));
+		chips.push(chip({ kind: 'secondary', text: p?.label ?? pid, icon: p?.icon }));
 		used.patterns.set(pid, (used.patterns.get(pid) ?? 0) + 1);
 	}
 	if (includeLifecycle && e.lifecycle && profile.lifecycle[e.lifecycle]) {
@@ -452,14 +478,7 @@ function libraryChips(n: SceneNode, scene: Scene, used: Used): Chip[] {
 		const name = lib.version ? `${lib.title} ${lib.version}` : lib.title;
 		if (style === 'new') used.libraries.added = true;
 		else used.libraries.reused = true;
-		chips.push(
-			chip({
-				kind: style === 'new' ? 'libnew' : 'lib',
-				text: style === 'new' ? `${name} +` : name,
-				icon: 'library',
-				strike: style === 'removed'
-			})
-		);
+		chips.push(chip({ kind: style === 'new' ? 'libnew' : 'lib', text: style === 'new' ? `${name} +` : name, icon: 'library', strike: style === 'removed' }));
 	}
 	return chips;
 }
@@ -470,19 +489,25 @@ function mappingText(e: Element, scene: Scene): string | undefined {
 	return e.implementedBy.map((id) => scene.elementsById.get(id)?.title ?? id).join(' + ');
 }
 
+const BAND = 7;
+const ICON = 18;
+const TITLE_LH = 18;
+
 /** Measure a leaf card; returns size and a draw closure. */
 export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 	const { profile, notation, view } = scene;
 	const e = n.el;
 	const st = cardStyle(n, scene);
+	const id = identity(n, scene);
 	const style = changeStyle(profile, e.change);
 	used.change.add(style);
 	if (n.area && notation.colour.nodes === 'area') used.areas.add(n.area);
 	const badge = changeBadge(profile, e.change);
 	const pad = S.nodePad;
+	const left = BAND + pad;
 	const detailsW = hasDetails(e) ? 20 : 0;
 	if (detailsW) used.details = true;
-	const headerReserve = pad + S.iconTile + 8 + (badge ? badgeWidth(badge) + 6 : 0) + (detailsW ? detailsW + 4 : 0) + pad;
+	const headerReserve = left + ICON + 8 + (badge ? badgeWidth(badge) + 6 : 0) + (detailsW ? detailsW + 4 : 0) + pad;
 
 	const chips = elementChips(n, scene, used);
 	const libs = libraryChips(n, scene, used);
@@ -494,30 +519,29 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 	let width = Math.max(S.nodeMinW, Math.min(S.nodeMaxW, titleNatural + headerReserve));
 	const longestWord = Math.max(...e.title.split(/\s+/).map((w) => measure(w, T.nodeTitle, 's')));
 	width = Math.max(width, Math.min(S.nodeMaxW + 60, longestWord + headerReserve));
-	const chipsNatural = chips.reduce((a, c) => a + c.width + S.chipGap, -S.chipGap) + pad * 2;
+	if (id.label) width = Math.max(width, Math.min(S.nodeMaxW + 40, measure(id.label, T.patternLabel, 'b', 0.05) + left + ICON + 8 + (badge ? badgeWidth(badge) + 6 : 0) + pad + (id.partial ? 16 : 0)));
+	const chipsNatural = chips.reduce((a, c) => a + c.width + S.chipGap, -S.chipGap) + left + pad;
 	if (chipsNatural > width) width = Math.min(S.nodeMaxW, chipsNatural);
-	for (const c of [...chips, ...libs]) width = Math.max(width, Math.min(S.nodeMaxW + 40, c.width + pad * 2));
-	if (e.subtitle) width = Math.max(width, Math.min(S.nodeMaxW, measure(e.subtitle, T.nodeSubtitle, 'r') + pad * 2));
-	// parts: title + its pattern chip on one row
+	for (const c of [...chips, ...libs]) width = Math.max(width, Math.min(S.nodeMaxW + 40, c.width + left + pad));
+	if (e.subtitle) width = Math.max(width, Math.min(S.nodeMaxW, measure(e.subtitle, T.nodeSubtitle, 'r') + left + pad));
 	for (const part of e.parts ?? []) {
 		const pp = part.pattern ? scene.patterns.get(part.pattern) : undefined;
 		const label = part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
 		const cw = label ? measure(label, T.chip, 's') + CHIP_PAD * 2 + (part.pattern ? CHIP_ICON + 3 : 0) : 0;
-		width = Math.max(width, Math.min(S.nodeMaxW + 60, measure(part.title, 10.5, 'm') + 9 + 14 + cw + pad * 2));
+		width = Math.max(width, Math.min(S.nodeMaxW + 60, measure(part.title, T.part, 'm') + 9 + 14 + cw + left + pad));
 	}
-	// fields: name + type on one row (data cards may grow wider than other cards)
 	for (const f of e.fields ?? []) {
 		const nameW = measure(f.title ?? f.id, T.field, 'b') + 20;
 		const typeW = f.type ? measure(f.type, T.fieldType, 'r') : 0;
-		width = Math.max(width, Math.min(S.nodeMaxW + 60, nameW + typeW + 18 + (e.ties?.length ? 14 : 0) + pad * 2));
+		width = Math.max(width, Math.min(S.nodeMaxW + 60, nameW + typeW + 18 + (e.ties?.length ? 14 : 0) + left + pad));
 	}
 	width = Math.ceil(width);
-	const inner = width - pad * 2;
+	const inner = width - left - pad;
 
 	const titleLines = wrap(e.title, width - headerReserve, T.nodeTitle, 's', 3);
-	const headerH = Math.max(34, titleLines.length * 16 + 16);
+	const labelH = id.label ? 14 : 0;
+	const headerH = Math.max(40, 10 + labelH + titleLines.length * TITLE_LH + 6);
 	const subtitleLines = e.subtitle ? wrap(e.subtitle, inner, T.nodeSubtitle, 'r', 2) : [];
-	const subtitle = subtitleLines.length > 0;
 	const chipLayout = layoutChips(chips, inner);
 	const libLayout = layoutChips(libs, inner);
 
@@ -539,20 +563,18 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 
 	// --- vertical layout ---
 	let y = headerH + 8;
-	const rows: { y: number; kind: string }[] = [];
-	const subtitleY = subtitle ? y : 0;
-	if (subtitle) y += 15 * subtitleLines.length + 1;
+	const subtitleY = y;
+	if (subtitleLines.length) y += 16 * subtitleLines.length + 2;
 	const chipsY = y;
 	if (chipLayout.height) y += chipLayout.height + S.rowGap + 1;
 	const partsY = y;
-	if (parts.length) y += parts.length * 18 + 2;
+	if (parts.length) y += parts.length * 20 + 2;
 	const libsY = y;
 	if (libLayout.height) y += libLayout.height + S.rowGap + 1;
 	const fieldsY = y + (visibleFields.length ? 2 : 0);
 	const fieldOffsets = new Map<string, number>();
 	visibleFields.forEach((f, i) => fieldOffsets.set(f.id, fieldsY + i * S.fieldRow + S.fieldRow / 2));
 	if (visibleFields.length) y = fieldsY + visibleFields.length * S.fieldRow + 2;
-	const moreY = y;
 	const moreText = [
 		hiddenFields > 0 ? `+${hiddenFields} more field${hiddenFields > 1 ? 's' : ''}` : '',
 		reusedIndexes > 0 && (visibleFields.length || changedIndexes.length) ? `${reusedIndexes} unchanged index${reusedIndexes > 1 ? 'es' : ''}` : ''
@@ -560,163 +582,181 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 		.filter(Boolean)
 		.join(' · ');
 	const indexesY = y;
-	if (changedIndexes.length) y += changedIndexes.length * 17 + 2;
+	if (changedIndexes.length) y += changedIndexes.length * 18 + 2;
 	const tiesY = y;
-	if (ties.length) y += ties.length * 16 + 2;
-	const moreY2 = y;
-	if (moreText) y += 15;
+	if (ties.length) y += ties.length * 17 + 2;
+	const moreY = y;
+	if (moreText) y += 16;
 	const mappingY = y;
-	if (mapping) y += 17;
+	if (mapping) y += 18;
 	const bodyEmpty = y === headerH + 8;
 	const height = Math.ceil(bodyEmpty ? headerH : y + 6);
-	void rows;
-	void moreY;
 
 	const draw = (x0: number, y0: number, ctx: DrawCtx): string => {
 		const r = notation.corners === 'rounded' ? S.radiusRounded : S.radiusSharp;
 		const out: string[] = [];
 		const clipId = `${ctx.prefix}clip-${e.id}`;
-		out.push(
-			el('clipPath', { id: clipId }, rect(0, 0, width, height, { rx: r }))
-		);
+		out.push(el('clipPath', { id: clipId }, rect(0, 0, width, height, { rx: r })));
 		out.push(rect(0, 0, width, height, { rx: r, fill: st.fill }));
-		// header band
-		out.push(g(rect(0, 0, width, headerH, { fill: st.band }) + (bodyEmpty ? '' : line(0, headerH, width, headerH, { stroke: st.onDark ? st.band : C.hairline, 'stroke-width': 1 })), { 'clip-path': `url(#${clipId})` }));
-		// proposed strip
-		const p = e.pattern ? scene.patterns.get(e.pattern) : undefined;
-		if (p?.status === 'proposed') {
-			out.push(g(rect(0, headerH, 7, height - headerH, { fill: `url(#${ctx.prefix}hatch)` }), { 'clip-path': `url(#${clipId})` }));
+		// identity: header tint + left band in the pattern / area colour; hatched when proposed
+		const colour = style === 'removed' ? C.faint : id.colour;
+		let headerFill: string = colour ? tint(colour, 0.15) : C.surface;
+		let bandFill: string = colour ?? C.line;
+		if (id.proposed) {
+			headerFill = hatchFill(ctx, colour ?? C.slate, 'light');
+			bandFill = hatchFill(ctx, colour ?? C.slate, 'strong');
 		}
-		// border
+		if (id.none) {
+			headerFill = C.white;
+			bandFill = C.white;
+		}
+		const clip = { 'clip-path': `url(#${clipId})` };
+		out.push(
+			g(
+				rect(0, 0, width, headerH, { fill: headerFill }) +
+					(bodyEmpty ? '' : line(0, headerH, width, headerH, { stroke: colour ? tint(colour, 0.45) : C.hairline, 'stroke-width': 1 })) +
+					rect(0, 0, BAND, height, { fill: bandFill }) +
+					(id.none ? line(BAND, 0, BAND, height, { stroke: C.faint, 'stroke-width': 1, 'stroke-dasharray': '3 3' }) : ''),
+				clip
+			)
+		);
+		// border (change state channel)
 		out.push(rect(0, 0, width, height, { rx: r, fill: 'none', stroke: st.border, 'stroke-width': st.borderWidth, 'stroke-dasharray': st.dash }));
-		// icon tile
-		const kindIcon = profile.elementKinds[e.kind]?.icon ?? 'component';
-		const iconName = p ? (p.icon ?? profile.patternFamilies[p.family]?.icon ?? kindIcon) : kindIcon;
-		const ty = Math.min(8, (headerH - S.iconTile) / 2);
-		out.push(rect(pad, ty, S.iconTile, S.iconTile, { rx: 3, fill: st.iconTile, stroke: st.onDark || st.iconTile !== C.surface ? 'none' : C.hairline }));
-		out.push(icon(iconName, pad + 3, ty + 3, 12, st.iconGlyph, 1.5));
-		// title
-		const tx = pad + S.iconTile + 8;
-		const firstBaseline = headerH / 2 - ((titleLines.length - 1) * 16) / 2 + 4.5;
+		// icon
+		const fg = colour ? shade(colour, 0.25) : C.slate;
+		const iy = 10 + (id.label ? 2 : (headerH - 20 - ICON) / 2);
+		out.push(icon(id.icon, left, iy, ICON, id.none ? C.faint : fg, 1.7));
+		// pattern label + title
+		const tx = left + ICON + 8;
+		let by = 10;
+		if (id.label) {
+			const lbl = truncate(id.label, width - tx - pad - (badge ? badgeWidth(badge) + 6 : 0) - (id.partial ? 16 : 0), T.patternLabel, 'b');
+			if (id.proposed) {
+				const lw = measure(lbl, T.patternLabel, 'b', 0.05) + 8;
+				out.push(rect(tx - 4, by - 1, lw, 14, { fill: C.white, stroke: fg, 'stroke-width': 1, 'stroke-dasharray': '3 2', rx: 2 }));
+			}
+			out.push(text(tx, by + 10, lbl, { size: T.patternLabel, weight: 700, fill: id.none ? C.muted : fg, letterSpacing: 0.05, italic: id.none }));
+			if (id.partial) {
+				const cx = tx + measure(lbl, T.patternLabel, 'b', 0.05) + (id.proposed ? 14 : 9);
+				out.push(el('circle', { cx, cy: by + 6.5, r: 4.5, fill: C.white, stroke: fg, 'stroke-width': 1.2 }));
+				out.push(el('path', { d: `M${fmt(cx)} ${fmt(by + 2)} A4.5 4.5 0 0 1 ${fmt(cx)} ${fmt(by + 11)} Z`, fill: fg }));
+			}
+			by += labelH;
+		}
 		titleLines.forEach((t, i) => {
-			const by = firstBaseline + i * 16;
-			out.push(text(tx, by, t, { size: T.nodeTitle, weight: 600, fill: st.title }));
-			if (st.strike) out.push(line(tx, by - 4.5, tx + measure(t, T.nodeTitle, 's') / 1.03, by - 4.5, { stroke: st.title, 'stroke-width': 1.2 }));
+			const b = by + 14 + i * TITLE_LH;
+			out.push(text(tx, b, t, { size: T.nodeTitle, weight: 600, fill: st.title }));
+			if (st.strike) out.push(line(tx, b - 5, tx + measure(t, T.nodeTitle, 's') / 1.03, b - 5, { stroke: st.title, 'stroke-width': 1.4 }));
 		});
 		// badge + details tag
 		let bx = width - pad;
 		if (badge) {
 			bx -= badgeWidth(badge);
-			out.push(drawBadge(bx, ty + 1, badge, style));
+			out.push(drawBadge(bx, 9, badge, style));
 			bx -= 6;
 		}
 		const tag = ctx.detailTags.get(e.id);
 		if (tag) {
 			const w = Math.max(16, measure(tag, 9.5, 'b') + 8);
 			bx -= w;
-			out.push(detailTag(bx, ty + 1.5, tag, st.onDark));
+			out.push(detailTag(bx, 10, tag, false));
 		}
 		// body
-		subtitleLines.forEach((l, i) =>
-			out.push(text(pad, subtitleY + 11 + i * 15, l, { size: T.nodeSubtitle, fill: style === 'removed' ? C.faint : st.title === C.white ? C.graphite : C.slate }))
-		);
+		subtitleLines.forEach((l, i) => out.push(text(left, subtitleY + 12 + i * 16, l, { size: T.nodeSubtitle, fill: st.body })));
 		chipLayout.rows.forEach((row, i) => {
-			let cx = pad;
+			let cx = left;
 			for (const c of row) {
 				out.push(drawChip(cx, chipsY + i * (S.chipH + S.chipGap), c, ctx));
 				cx += c.width + S.chipGap;
 			}
 		});
 		parts.forEach((part, i) => {
-			const py = partsY + i * 18;
+			const py = partsY + i * 20;
 			const ps = changeStyle(profile, part.change);
-			const fg = ps === 'removed' ? C.faint : C.graphite;
-			out.push(el('path', { d: `M${pad + 1} ${py + 5} l4 3.5 -4 3.5`, fill: 'none', stroke: C.faint, 'stroke-width': 1.2 }));
-			const pt = truncate(part.title, inner * 0.55, 10.5, 'm');
-			out.push(text(pad + 9, py + 12, pt, { size: 10.5, weight: 500, fill: fg }));
+			const pfg = ps === 'removed' ? C.faint : C.graphite;
+			out.push(el('path', { d: `M${left + 1} ${py + 6} l4 3.5 -4 3.5`, fill: 'none', stroke: C.faint, 'stroke-width': 1.2 }));
+			const pt = truncate(part.title, inner * 0.55, T.part, 'm');
+			out.push(text(left + 9, py + 13.5, pt, { size: T.part, weight: 500, fill: pfg }));
 			const pp = part.pattern ? scene.patterns.get(part.pattern) : undefined;
 			const label = part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
 			if (part.pattern) used.patterns.set(part.pattern, (used.patterns.get(part.pattern) ?? 0) + 1);
 			if (part.pattern === null) used.noPattern = true;
 			if (label) {
 				const c = part.pattern === null ? chip({ kind: 'nopattern', text: label }) : patternChip(pp, part.pattern!, profile, notation.colour.nodes === 'pattern', false);
-				const cw = Math.min(c.width, inner - (measure(pt, 10.5, 'm') + 14));
-				out.push(drawChip(width - pad - cw, py + 0.5, { ...c, width: cw, text: truncate(c.text, cw - (c.icon ? CHIP_ICON + 3 : 0) - CHIP_PAD * 2, T.chip, 's') }, ctx));
+				const cw = Math.min(c.width, inner - (measure(pt, T.part, 'm') + 14));
+				out.push(drawChip(width - pad - cw, py + 1.5, { ...c, width: cw, text: truncate(c.text, cw - (c.icon ? CHIP_ICON + 3 : 0) - CHIP_PAD * 2, T.chip, 's') }, ctx));
 			}
 		});
 		libLayout.rows.forEach((row, i) => {
-			let cx = pad;
+			let cx = left;
 			for (const c of row) {
 				out.push(drawChip(cx, libsY + i * (S.chipH + S.chipGap), c, ctx));
 				cx += c.width + S.chipGap;
 			}
 		});
-		if (visibleFields.length) {
-			out.push(line(pad, fieldsY - 2, width - pad, fieldsY - 2, { stroke: C.hairline, 'stroke-width': 1 }));
-		}
+		if (visibleFields.length) out.push(line(left, fieldsY - 2, width - pad, fieldsY - 2, { stroke: C.hairline, 'stroke-width': 1 }));
 		visibleFields.forEach((f, i) => {
 			const fy = fieldsY + i * S.fieldRow;
 			const fs = changeStyle(profile, f.change);
-			if (i > 0) out.push(line(pad, fy, width - pad - tieGutter, fy, { stroke: C.hairline, 'stroke-width': 0.75 }));
+			if (i > 0) out.push(line(left, fy, width - pad - tieGutter, fy, { stroke: C.hairline, 'stroke-width': 0.75 }));
 			const mid = fy + S.fieldRow / 2;
-			if (indexed.has(f.id)) out.push(rect(pad, mid - 2.5, 5, 5, { fill: fs === 'removed' ? C.faint : C.graphite }));
+			if (indexed.has(f.id)) out.push(rect(left, mid - 2.5, 5, 5, { fill: fs === 'removed' ? C.faint : C.graphite }));
 			const nameStyle: FontStyle = fs === 'new' ? 'b' : 'r';
-			const fg = fs === 'removed' ? C.faint : fs === 'new' ? C.ink : fs === 'modified' ? C.ink : C.graphite;
-			let nx = pad + 10;
+			const ffg = fs === 'removed' ? C.faint : fs === 'reused' ? C.graphite : C.ink;
+			let nx = left + 10;
 			if (fs === 'new' || fs === 'modified') {
-				out.push(text(nx, mid + 3.8, fs === 'new' ? '+' : 'Δ', { size: 11, weight: 700, fill: C.ink }));
-				nx += 10;
+				out.push(text(nx, mid + 4, fs === 'new' ? '+' : 'Δ', { size: 11.5, weight: 700, fill: C.ink }));
+				nx += 11;
 			}
 			const typeW = f.type ? Math.min(inner * 0.42, measure(f.type, T.fieldType, 'r')) : 0;
-			const name = truncate(f.title ?? f.id, inner - 10 - typeW - tieGutter - 8 - (nx - pad - 10), T.field, nameStyle);
-			out.push(text(nx, mid + 3.8, name, { size: T.field, weight: nameStyle === 'b' ? 700 : 400, fill: fg }));
-			if (fs === 'removed') out.push(line(nx, mid, nx + measure(name, T.field, nameStyle) / 1.03, mid, { stroke: fg, 'stroke-width': 1 }));
-			if (f.type) out.push(text(width - pad - tieGutter, mid + 3.5, truncate(f.type, inner * 0.42, T.fieldType, 'r'), { size: T.fieldType, fill: C.faint, anchor: 'end' }));
+			const name = truncate(f.title ?? f.id, inner - 10 - typeW - tieGutter - 8 - (nx - left - 10), T.field, nameStyle);
+			out.push(text(nx, mid + 4, name, { size: T.field, weight: nameStyle === 'b' ? 700 : 400, fill: ffg }));
+			if (fs === 'removed') out.push(line(nx, mid, nx + measure(name, T.field, nameStyle) / 1.03, mid, { stroke: ffg, 'stroke-width': 1 }));
+			if (f.type) out.push(text(width - pad - tieGutter, mid + 3.5, truncate(f.type, inner * 0.42, T.fieldType, 'r'), { size: T.fieldType, fill: C.muted, anchor: 'end' }));
 		});
-		// tie-bars
 		ties.forEach((t, i) => {
 			const ya = fieldOffsets.get(t.fields[0])!;
 			const yb = fieldOffsets.get(t.fields[1])!;
-			const bxx = width - pad - 4 + 0 - i * 7;
+			const bxx = width - pad - 4 - i * 7;
 			const [y1, y2] = ya < yb ? [ya, yb] : [yb, ya];
 			out.push(el('path', { d: `M${fmt(bxx - 6)} ${fmt(y1)} H${fmt(bxx)} V${fmt(y2)} H${fmt(bxx - 6)}`, fill: 'none', stroke: C.faint, 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
 			const enf = t.enforcement ? profile.enforcement[t.enforcement] : undefined;
 			if (enf) out.push(line(bxx + 0.1, y1 + 3, bxx + 0.1, y2 - 3, { stroke: enf.colour, 'stroke-width': 1.2, ...dashAttrs(enf.line) }));
 		});
 		changedIndexes.forEach((ix, i) => {
-			const iy = indexesY + i * 17;
+			const iy = indexesY + i * 18;
 			const is = changeStyle(profile, ix.change);
-			const fg = is === 'removed' ? C.faint : C.graphite;
-			out.push(text(pad, iy + 12, '⌗', { size: 11, weight: 700, fill: fg }));
+			const ifg = is === 'removed' ? C.faint : C.graphite;
+			out.push(text(left, iy + 13, '⌗', { size: 11.5, weight: 700, fill: ifg }));
 			const lbl = changeBadge(profile, ix.change);
 			const lw = lbl ? badgeWidth(lbl) * 0.85 : 0;
-			const name = truncate(ix.fields.join(' + '), inner - 14 - lw - 6, 10.5, 'm');
-			out.push(text(pad + 12, iy + 12, name, { size: 10.5, weight: 500, fill: fg }));
-			if (is === 'removed') out.push(line(pad + 12, iy + 8.5, pad + 12 + measure(name, 10.5, 'm') / 1.03, iy + 8.5, { stroke: fg }));
+			const name = truncate(ix.fields.join(' + '), inner - 14 - lw - 6, T.part, 'm');
+			out.push(text(left + 12, iy + 13, name, { size: T.part, weight: 500, fill: ifg }));
+			if (is === 'removed') out.push(line(left + 12, iy + 9, left + 12 + measure(name, T.part, 'm') / 1.03, iy + 9, { stroke: ifg }));
 			if (lbl) out.push(g(drawBadge(0, 0, lbl, is), { transform: `${translate(width - pad - lw, iy + 2)} scale(0.85)` }));
 		});
 		ties.forEach((t, i) => {
-			const ty2 = tiesY + i * 16;
+			const ty2 = tiesY + i * 17;
 			const enf = t.enforcement ? profile.enforcement[t.enforcement] : undefined;
-			const colour = enf?.colour ?? C.missing;
-			out.push(el('path', { d: `M${pad} ${ty2 + 4} h4 v8 h-4`, fill: 'none', stroke: C.faint, 'stroke-width': 1.6 }));
-			let lx = pad + 9;
+			const tcol = enf?.colour ?? C.missing;
+			out.push(el('path', { d: `M${left} ${ty2 + 4} h4 v8 h-4`, fill: 'none', stroke: C.faint, 'stroke-width': 1.6 }));
+			let lx = left + 9;
 			const dv = divergenceId(t.divergence);
 			if (dv) {
-				out.push(warningGlyph(lx + 5, ty2 + 8.5, profile.divergenceColour ?? '#be123c', 10));
-				out.push(text(lx + 12, ty2 + 12, dv, { size: 10, weight: 700, fill: profile.divergenceColour ?? '#be123c' }));
-				lx += 16 + measure(dv, 10, 'b');
+				out.push(warningGlyph(lx + 5, ty2 + 8.5, profile.divergenceColour ?? '#be123c', 11));
+				out.push(text(lx + 12, ty2 + 12.5, dv, { size: 10.5, weight: 700, fill: profile.divergenceColour ?? '#be123c' }));
+				lx += 16 + measure(dv, 10.5, 'b');
 				used.divergence = true;
 			}
 			const lbl = t.label ?? `${t.fields[0]} ↔ ${t.fields[1]} must agree`;
-			out.push(text(lx, ty2 + 12, truncate(lbl, width - pad - lx, 10, 'i'), { size: 10, italic: true, fill: colour }));
+			out.push(text(lx, ty2 + 12.5, truncate(lbl, width - pad - lx, 10.5, 'i'), { size: 10.5, italic: true, fill: tcol }));
 		});
-		if (moreText) out.push(text(pad, moreY2 + 11, moreText, { size: 10, italic: true, fill: C.faint }));
+		if (moreText) out.push(text(left, moreY + 11.5, moreText, { size: 10.5, italic: true, fill: C.muted }));
 		if (mapping) {
-			out.push(icon('link', pad, mappingY + 2, 11, C.muted, 1.4));
-			out.push(text(pad + 14, mappingY + 11.5, truncate(mapping, inner - 14, 10.5, 'r'), { size: 10.5, fill: C.muted }));
+			out.push(icon('link', left, mappingY + 2, 12, C.muted, 1.4));
+			out.push(text(left + 15, mappingY + 12, truncate(mapping, inner - 15, T.part, 'r'), { size: T.part, fill: C.muted }));
 		}
-		return g(out.join(''), { transform: translate(x0, y0), 'data-id': e.id });
+		return g(out.join(''), { transform: translate(x0, y0), 'data-id': e.id, opacity: st.opacity < 1 ? st.opacity : undefined });
 	};
 	return { width, height, draw, fieldOffsets };
 }

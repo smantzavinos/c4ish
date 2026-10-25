@@ -1,6 +1,6 @@
 # c4ish — Visual specification (v0)
 
-**Status:** decided for phase 1 · **Date:** 2026-10-21
+**Status:** revised for phase 2 (DECISIONS 19–23) · **Date:** 2026-10-21
 
 This page fixes how a c4ish diagram looks. It's written before the renderer and is the yardstick for it: if the SVG and this page disagree, one of them is a bug.
 
@@ -13,18 +13,19 @@ The bar: **a reviewer understands what changes, which patterns are used and wher
 
    | Channel | Carries | Never carries |
    |---|---|---|
-   | Header band fill and contrast | Change state | Pattern, enforcement |
-   | Icon glyph and pattern chip | Pattern (and element kind when there's no pattern) | Change state |
+   | Card hue (header tint, left band, icon, caps label) | Pattern (engineering default) or model area (product default) | Change state |
+   | Badge, border weight/dash, opacity | Change state | Pattern, enforcement |
+   | Icon glyph | Pattern family (element kind when there's no pattern) | Change state |
    | Hatching | Proposed (uncatalogued) pattern | Anything else |
-   | Hue | **One** per-view meaning chosen by the profile: enforcement (engineering default) or model area and relationship kind (product default) | Change state |
+   | Line hue | Enforcement on data connectors (engineering) or relationship kind (product) | Change state |
    | Line style | Enforcement for data connectors; runtime connectors are thin and solid | Change state, except removed (grey dashed) |
    | Corner radius | View family: sharp = engineering, rounded = product | — |
    | Nesting | Structure (a child can't exist without its parent) | References |
    | Connector | Reference | Containment |
 
-3. **Change state is hue-free.** Engineering views spend hue on enforcement, so amber can't also mean "modified". Change state uses contrast, weight and a badge instead, and survives greyscale by construction.
+3. **Change state is hue-free.** Cards spend hue on patterns and lines on enforcement, so no hue is left for "modified". Change state uses a badge, border and opacity instead, and survives greyscale by construction. The key says both colour meanings in words: *card colour = pattern · line colour = who enforces*.
 4. **Greyscale-safe.** Every meaning that hue carries is also carried by line style, a glyph, a badge or text.
-5. **Text budget.** A title has at most ~40 characters and two lines. A subtitle has one line (≤ 64 characters) and is truncated with an ellipsis if longer; lint warns. Long text goes in `details`: footnotes in a static SVG, a side panel in the future viewer.
+5. **Text budget.** A title has at most ~40 characters and two lines. A subtitle has one line (≤ 64 characters) and is truncated with an ellipsis if longer; lint warns. Long text goes in `details`: the viewer's side panel, or the `--appendix` markdown for static renders. Connector labels are at most ~2 short lines; longer rationale goes in the relationship's `details`.
 6. **The legend is generated.** It's drawn from only the styles a view actually uses, as graphical samples, never as a block of text.
 
 ## 2. Page anatomy (static SVG)
@@ -35,18 +36,16 @@ The bar: **a reviewer understands what changes, which patterns are used and wher
 │ Subtitle (13.5/400, muted)                                               │
 │ ┃ REVIEW FOCUS  · bullet · bullet                                        │
 │                                                                          │
-│ ┌─────────────── diagram ───────────────┐   ① callout card               │
-│ │ frames, nodes, connectors             │   ② callout card               │
-│ └───────────────────────────────────────┘   ③ …                          │
-│                                                                          │
-│ KEY   change │ patterns │ connectors │ lifecycle │ markers               │
-│ DETAILS & CONTRACTS  A … B … C1 …                                        │
+│ ┌─────────────── diagram ───────────────┐   NOTES  ① ② ③ …               │
+│ │ frames, cards, connectors             │   KEY    card colour = pattern  │
+│ │                                       │          line colour = enforces │
+│ └───────────────────────────────────────┘          change · markers       │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Callouts** sit in a column to the right of the diagram, unless the diagram is much wider than tall (aspect > 1.6), in which case they wrap in a row grid below it.
+- **Diagram first.** The right column (330px) holds the numbered notes, then the compact key. If the diagram is much wider than tall (aspect > 2.4), both go below it instead.
 - **Review focus** is the view's `focus` list. It's the one thing the author most wants checked, so it sits under the title, before the picture.
-- **Details** (element `details`) and **contracts** are reference material at the bottom, keyed by letter tags (A, B, …) and contract tags (C1, C2, …).
+- **Details and contracts are not printed on the page.** `c4ish render --appendix` writes `<out>.appendix.md` with notes, lettered details (A, B, …), connector details and contracts (C1, …); the letter and contract tags on the diagram point into it. The viewer shows the same content in its side panel.
 
 ## 3. Typography and spacing
 
@@ -58,11 +57,12 @@ The bar: **a reviewer understands what changes, which patterns are used and wher
 | View subtitle | 13.5 / 400 | muted `#64748b` |
 | Frame title | 11.5 / 700, uppercase, +0.06em tracking | graphite `#334155` (or area colour) |
 | Frame subtitle | 11 / 400 italic | muted |
-| Node title | 13 / 600 | white on a new band, ink otherwise |
-| Node subtitle | 11.5 / 400 | slate `#475569` |
-| Chip | 10 / 600 | per chip |
-| Field row | 11 / 400 (name), 10 / 400 (type) | ink / faint |
-| Connector label | 10.5 / 500 on a white halo | graphite |
+| Pattern label (above the title) | 9.5 / 700, uppercase | shade of the pattern colour |
+| Node title | 14.5 / 600 | ink |
+| Node subtitle | 12.5 / 400 | slate `#475569` |
+| Chip | 10.5 / 600 | per chip |
+| Field row | 12 / 400 (name), 10.5 / 400 (type) | ink / faint |
+| Connector label | 11.5 / 500 on a white halo | graphite |
 | Callout title / body | 12 / 700, 11.5 / 400 | ink / slate |
 | Key and footnotes | 11 / 400, 10.5 / 400 | slate |
 
@@ -75,10 +75,11 @@ Neutral palette: ink `#0f172a`, graphite `#334155`, slate `#475569`, muted `#647
 ```
  ①                                   ← callout marker (if a note targets it)
 ┌─────────────────────────────────────┐
-│ [▣] Short title                [NEW]│ ← header band: icon tile, title (≤2 lines), change badge
-├─────────────────────────────────────┤
-│ one-line subtitle                   │
-│ [⌕ read query] [▨ PROPOSED] [🔒 rel]│ ← chips: pattern, proposed/partial, lifecycle
+┃ [⌕] SCOPED READ QUERY          [NEW]│ ← header tinted in the pattern colour: icon, caps pattern label, change badge
+┃     Short title                     │   title (≤3 lines); left band in the pattern colour
+┃─────────────────────────────────────│
+┃ one-line subtitle                   │
+┃ [⌗ tag pattern] [🔒 released]       │ ← chips: secondary (tag) patterns, lifecycle
 │ {} libA  {} libB +                  │ ← library chips
 │ ▪ fieldName            type     +   │ ← fields (data elements), tie-bars at the right
 │ • part — [pattern chip]             │ ← parts (grouped members with their own pattern)
@@ -86,9 +87,10 @@ Neutral palette: ink `#0f172a`, graphite `#334155`, slate `#475569`, muted `#647
 └─────────────────────────────────────┘
 ```
 
-- **Icon tile:** 18×18, glyph from the pattern's family. With no pattern, the glyph comes from the element kind. The same pattern has the same glyph and chip label everywhere.
-- **Pattern chip:** `glyph + pattern label`. A partial fit adds a half-filled disc and "partial". An explicit `pattern: null` shows a faint italic "no pattern" chip, so a deliberate gap is visible.
-- **Proposed pattern (not in the catalog):** the chip is hatched with a dashed border and reads `PROPOSED`. A hatched 6px strip runs down the node's left edge. Hatching is used for nothing else, so the reviewer finds every proposal by its texture.
+- **Pattern identity:** the primary pattern's colour (`PatternDef.colour`, else its family colour) fills the header with a 15% tint, draws a 7px band down the left edge and shades the icon and the caps pattern label. The same pattern looks the same everywhere, and different patterns differ at a glance. Secondary (`patterns`) are tag chips.
+- **Partial fit** adds a half-filled disc after the pattern label. An explicit `pattern: null` shows `NO PATTERN` with a white, dashed band, so a deliberate gap is visible.
+- **Proposed pattern (not in the catalog):** the band is strongly hatched, the header lightly hatched, and the label reads `PROPOSED · NAME` in a dashed box. Hatching is used for nothing else, so the reviewer finds every proposal by its texture.
+- **Area mode (product views):** the same anatomy, coloured by model area, with the element kind as the caps label.
 - **Divergence:** a warning triangle with the divergence id (`IN-3`), on the element or connector that is wrong, in the profile's divergence colour (rose by default). It's never in the legend alone.
 - **Libraries:** `{}` chips inside the component. A new library has an ink border and a `+`.
 - **Fields:** rows with a small filled square when the field is in an index. A new field is bold with a `+`. A removed field is struck through. Only changed indexes are listed, as `⌗ index` rows; reused indexes are summarised as a count.
@@ -96,14 +98,16 @@ Neutral palette: ink `#0f172a`, graphite `#334155`, slate `#475569`, muted `#647
 
 ### 4.1 Change state
 
-| State | Header band | Border | Text | Badge |
-|---|---|---|---|---|
-| **new** | filled ink `#1e293b` | 1.75 ink | white title | `NEW` (white pill) |
-| **modified** | light slate `#e2e8f0` | 1.5 graphite | ink | `MODIFIED` (outlined pill) |
-| **reused** (context) | white | 1 `#cbd5e1` | slate and muted | none: muted means context |
-| **removed** | none, surface fill | 1.25 faint, dashed | faint, title struck through | `REMOVED` (faint outline) |
+Change state never touches the header (that's the pattern's).
 
-New is the darkest thing on the page. Context recedes. Removed stays in place, greyed, never deleted.
+| State | Badge | Border | Card |
+|---|---|---|---|
+| **new** | `NEW`, solid ink | 1.5 ink | full contrast |
+| **modified** | `MODIFIED`, outlined | 1.5 ink | full contrast |
+| **reused** (context) | none | 1 grey | 50% opacity |
+| **removed** | `REMOVED`, solid slate | 1.25 slate, dashed | surface fill, title struck through |
+
+Context recedes; what changes, what's proposed and what's at risk stands out. Removed stays in place, never deleted.
 
 ### 4.2 Lifecycle
 
@@ -115,7 +119,7 @@ Border precedence: removed > lifecycle > change state. The chip always carries l
 
 ## 5. Frames (containers, systems, grouping product concepts)
 
-A titled frame: hairline border, very light surface fill (alternating with white by depth), and corner radius from the view family. The header has a kind glyph, an uppercase title, a change badge and an optional one-line italic subtitle. A new frame gets an ink border. A removed frame is dashed and grey. In area-coloured views (product), the frame's border, title and fill tint come from its area (for example, product model = blue, system model = teal).
+A titled frame (unchanged in phase 2): hairline border, very light surface fill (alternating with white by depth), and corner radius from the view family. The header has a kind glyph, an uppercase title, a change badge and an optional one-line italic subtitle. A new frame gets an ink border. A removed frame is dashed and grey. In area-coloured views (product), the frame's border, title and fill tint come from its area (for example, product model = blue, system model = teal).
 
 ## 6. Connectors
 
@@ -144,20 +148,20 @@ A data connector without enforcement is a lint warning. It's drawn as a bright m
 
 **Scenario delta** (an illustrative before/after inside one view, independent of feature change): `+` badge and heavier line for added; `−` badge, grey dashed and struck-through label for removed.
 
-**Labels:** short (≤ 40 characters), on a white halo, placed by the layout engine. A contract reference adds a `C1` tag. A divergence adds a warning triangle.
+**Labels:** short (≤ 40 characters, wrapped to ~2 lines at ~160px), on a white halo. They're placed after routing by `placeLabels`: candidate spots along the line (or beside it), scored against cards, frame headers, other labels and crossings, preferring spots near the source. A contract reference adds a `C1` tag. A divergence adds a warning triangle.
 
 ## 7. Callouts, focus, absence
 
 - **Callout** = a model `note` with `on`. A numbered ink disc (①) sits on the target's top-left corner or on the connector label. The card in the callout column repeats the number, a kind label (`FOCUS`, `RISK`, `NOTE`, `QUESTION`), an optional bold title and the text. Monochrome; the kind is in text.
 - **Absence:** an `absence` is a grey italic caption with no box, placed by the layout engine inside the parent where the missing thing would be. "Nothing requires it in this configuration."
-- **Details tag:** a small grey square with a letter at a node's bottom-right. The footnote lists the node title and its details.
+- **Details tag:** a small grey square with a letter at a node's bottom-right. The `--appendix` markdown (and the viewer panel) lists the node title and its details.
 
 ## 8. Legend (Key)
 
-Generated per view, with only used items, grouped left to right:
-1. **Change:** mini header bands for each used change state.
-2. **Patterns:** one row per pattern used, with icon, label, catalog id and usage count. Proposed patterns are hatched and listed first. This doubles as the "which patterns does this change use" summary.
-3. **Connectors:** a line sample plus a label for each used combination of (runtime kind) or (enforcement level).
+Generated per view from a data model (`buildLegend`), with only used items. The static page draws it as a compact column; the viewer draws the same rows as filter buttons. It opens with the view's colour meaning in words (`Card colour = pattern · line colour = who enforces a data relationship`).
+1. **Card colour = pattern:** one row per pattern used, with a card swatch in its colour and the usage count. Proposed patterns are hatched and listed first; tag-only patterns use a chip swatch and come last; "No pattern (deliberate)" and "Partial fit" if used. (Product views: **card colour = model area**.)
+2. **Line colour = who enforces:** a line sample per used style; runtime kinds that look identical share one row.
+3. **Change (badge + border):** the badges used.
 4. **Lifecycle, markers:** padlock, draft, divergence, tie-bar, callout disc, details tag and absence, if used.
 
 ## 9. View families
@@ -165,14 +169,15 @@ Generated per view, with only used items, grouped left to right:
 | | Engineering (default) | Product (default) |
 |---|---|---|
 | Corners | sharp (2px) | rounded (10px) |
-| Hue means | enforcement on data connectors | model area (nodes) and relationship kind (connectors) |
-| Pattern identity | glyph + chip | glyph + chip (patterns are rare in product views) |
+| Hue means | pattern (cards) and enforcement (data connectors) | model area (cards) and relationship kind (connectors) |
+| Pattern identity | card colour + glyph + caps label | caps kind label (patterns are rare in product views) |
 | Typical elements | containers, components, data, libraries | product concepts, versions, configurations |
 
-A profile can set `colour.nodes` to `pattern` for a "pattern map" view. In that view, family hue tints icon tiles and pattern chips, and connectors drop to line style only. Lint warns if a view asks for two unrelated hue meanings.
+Views pick colour meanings with `colour.nodes` (`pattern`, `area`, `none`) and `colour.edges` (`enforcement`, `kind`, `none`). Lint warns only for pattern + kind, where the two palettes compete.
 
 ## 10. Rejected alternatives
 
 - **Hue for change state** (green new, amber modified): collides with enforcement amber and emerald in engineering views, and fails greyscale.
-- **Hue for patterns by default:** with eight or more patterns the palette becomes noise, and it collides with enforcement. Glyph plus chip plus a hatched proposal marker scales and stays legible. Pattern hue remains available as a view mode.
+- **Glyph and chip only for patterns** (the phase 1 default): reviewers couldn't tell patterns apart at a glance. Replaced by pattern-coloured cards (DECISIONS 19); collisions with enforcement are avoided by keeping rose and amber out of pattern palettes and by colouring cards, not lines.
+- **Details as footnotes on the page:** they doubled the page height and were rarely read. Moved to the appendix and the viewer panel (DECISIONS 21).
 - **Prose captions inside boxes:** this was the first experiment's main readability failure. Captions became `subtitle` (one line) plus `details` (footnotes).

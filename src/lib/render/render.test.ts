@@ -45,6 +45,24 @@ describe.each(cases)('%s / %s', (name, view) => {
 					expect(overlap(rects.get(ids[i])!, rects.get(ids[j])!), `${ids[i]} vs ${ids[j]}`).toBe(false);
 	});
 
+	it('places edge labels clear of cards and of each other', async () => {
+		const { model, profile } = loaded(name);
+		const { diagram } = await renderView(model, profile, { view });
+		const labels = diagram.edges.filter((e) => e.label).map((e) => ({ id: e.id, r: e.label!.rect }));
+		for (const l of labels) for (const n of diagram.nodes) expect(overlap(l.r, n.rect), `label ${l.id} over ${n.id}`).toBe(false);
+		for (const a of labels) for (const b of labels) if (a.id < b.id) expect(overlap(a.r, b.r), `labels ${a.id} / ${b.id}`).toBe(false);
+	});
+
+	it('keeps the page diagram-first: no details footer unless an appendix is requested', async () => {
+		const { model, profile } = loaded(name);
+		const plain = await renderView(model, profile, { view });
+		expect(plain.svg).not.toContain('>DETAILS<');
+		expect(plain.appendix).toBeUndefined();
+		const withAppendix = await renderView(model, profile, { view, appendix: true });
+		expect(withAppendix.appendix).toMatch(/^# .* — appendix/);
+		if (withAppendix.diagram.detailTags.size) expect(withAppendix.appendix).toContain('## Details');
+	});
+
 	it('renders well-formed, deterministic SVG', async () => {
 		const { model, profile } = loaded(name);
 		const a = await renderView(model, profile, { view });

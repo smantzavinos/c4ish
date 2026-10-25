@@ -101,15 +101,15 @@ export const defaultProfile: Profile = {
 		engineering: {
 			label: 'Engineering',
 			corners: 'sharp',
-			colour: { nodes: 'none', edges: 'enforcement', meaning: 'Colour = who enforces a data relationship' },
-			direction: 'down'
+			colour: { nodes: 'pattern', edges: 'enforcement', meaning: 'Card colour = pattern · line colour = who enforces a data relationship' },
+			direction: 'auto'
 		},
 		product: {
 			label: 'Product',
 			corners: 'rounded',
 			colour: { nodes: 'area', edges: 'kind', meaning: 'Colour = model area and relationship kind' },
 			forbidSiblingChains: true,
-			direction: 'down'
+			direction: 'auto'
 		},
 		patterns: {
 			label: 'Pattern map',

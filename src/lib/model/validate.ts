@@ -222,8 +222,10 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 				err('unknown-ref', `view references unknown element "${ref}"`, `view:${v.id}`);
 		for (const ref of v.omitRelationships ?? [])
 			if (!relationships.has(ref)) err('unknown-ref', `view omits unknown relationship "${ref}"`, `view:${v.id}`);
-		if (notation.colour.nodes === 'pattern' && notation.colour.edges !== 'none')
-			lint('warning', 'colour-meaning', `view kind "${v.kind}" colours nodes by pattern AND edges by ${notation.colour.edges}; colour must mean one thing`, `view:${v.id}`);
+		// Card colour and line colour are separate channels (D19): pattern on cards + enforcement on
+		// lines is fine. Two categorical palettes (pattern hues on cards, kind hues on lines) are not.
+		if (notation.colour.nodes === 'pattern' && notation.colour.edges === 'kind')
+			lint('warning', 'colour-meaning', `view kind "${v.kind}" colours cards by pattern AND lines by kind; two palettes compete — colour lines by enforcement or not at all`, `view:${v.id}`);
 		if (notation.forbidSiblingChains) siblingChains(model, v, viewMembers(model, profile, v), elements, (m, at) => lint(rules.siblingChains, 'sibling-chain', m, at));
 	}
 	return out;

@@ -11,3 +11,8 @@ export { buildScene, type Scene } from './render/scene.js';
 export { measure, wrap, truncate, FONT_FAMILY } from './text/measure.js';
 export { ICON_NAMES } from './render/icons.js';
 export { check, type CheckResult } from './api.js';
+export { buildDiagram, diagramBodySvg, layoutScore, type Diagram, type DiagramItem, type DiagramEdge, type DiagramNote, type DiagramOptions } from './render/diagram.js';
+export { buildLegend, renderLegendSvg, type Legend, type LegendItem, type LegendSection } from './render/legend.js';
+export { placeLabels } from './render/labels.js';
+export { renderAppendix } from './render/page.js';
+export * from './viewer/state.js';

@@ -7,8 +7,16 @@
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
 		"esModuleInterop": true,
-		"types": ["node"],
+		"types": [
+			"node"
+		],
 		"noEmit": true
 	},
-	"include": ["src/lib/**/*.ts", "scripts/**/*.ts"]
+	"include": [
+		"src/lib/**/*.ts",
+		"scripts/**/*.ts"
+	],
+	"exclude": [
+		"src/lib/viewer/index.ts"
+	]
 }

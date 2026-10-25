@@ -33,11 +33,17 @@ Editing the model itself in the viewer comes later.
 pnpm c4ish validate examples/paged-reads/model.c4ish.json
 pnpm c4ish render examples/versioned-wiring/model.c4ish.json --view product --out product.svg --png
 pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
-pnpm dev               # demo page with the example diagrams
+pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.svg.appendix.md (details, contracts, notes)
+pnpm dev               # demo page with the example diagrams; /viewer is the interactive viewer
+pnpm build             # static site in build/ (open build/viewer/index.html via any static server; works offline)
 pnpm check && pnpm test
 ```
 
-Library: `import { check, renderView } from 'c4ish'`. `check(modelJson, profileJson)` returns diagnostics plus the resolved model and profile. `renderView(model, profile, { view })` returns `{ svg, width, height, geometry }`. A model names its profile by relative path (`"profile": "../profile.c4ish.json"`); profiles can `"extends": "default"`.
+### Viewer
+
+`/viewer` opens a model (and optionally its profile) from a file picker or drag-and-drop, or one of the bundled examples. Ctrl/Cmd + wheel zooms around the cursor; a plain wheel pans. Drag to pan freely at any zoom, including beyond the diagram edges; dragging continues outside the canvas until release. **Fit** centres the whole diagram with a margin. Click a card or connector for its details, pattern (with catalog reference), libraries, fields, contract, enforcement and notes. Hover shows its neighbourhood. Click key rows to highlight a pattern, connector style or change state; **Only changes** hides reused context. **Export SVG** writes the same page as the CLI. Deep links: `?example=versioned-wiring&view=engineering&select=rewire&highlight=pattern:api/tenant-query&only=changes`.
+
+Library: `import { check, renderView, buildDiagram, buildLegend } from 'c4ish'`; Svelte components from `c4ish/viewer`. `check(modelJson, profileJson)` returns diagnostics plus the resolved model and profile. `renderView(model, profile, { view })` returns `{ svg, width, height, geometry }`. A model names its profile by relative path (`"profile": "../profile.c4ish.json"`); profiles can `"extends": "default"`.
 
 ## Development
 Nix provides only the toolchain (Node 22, pnpm, Git); pnpm manages JS dependencies.

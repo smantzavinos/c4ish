@@ -261,9 +261,9 @@
 		{ "on": "summary", "kind": "question", "text": "Scope counts are complete counts, not exact version pins. Is that acceptable for dashboard cards?" }
 	],
 	"proposedPatterns": [
-		{ "id": "web/sealed-page-history", "label": "sealed page history", "family": "web", "icon": "history" },
-		{ "id": "api/bounded-read", "label": "scope-first bounded read", "family": "api", "icon": "filter" },
-		{ "id": "api/index-merge", "label": "native index merge", "family": "api", "icon": "merge" },
-		{ "id": "api/sealed-continuation", "label": "sealed continuation", "family": "security", "icon": "seal" }
+		{ "id": "web/sealed-page-history", "label": "sealed page history", "family": "web", "icon": "history", "colour": "#1e40af" },
+		{ "id": "api/bounded-read", "label": "scope-first bounded read", "family": "api", "icon": "filter", "colour": "#0369a1" },
+		{ "id": "api/index-merge", "label": "native index merge", "family": "api", "icon": "merge", "colour": "#a21caf" },
+		{ "id": "api/sealed-continuation", "label": "sealed continuation", "family": "security", "icon": "seal", "colour": "#be185d" }
 	]
 }

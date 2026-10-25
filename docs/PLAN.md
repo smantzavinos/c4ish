@@ -1,6 +1,6 @@
 # c4ish — Plan
 
-**Status:** phase 1 built (M1, M2 and M4 static, M3 automatic only) · **Date:** 2026-10-21
+**Status:** phase 2 built (M1, M2, M4; M3 automatic only; M5 viewing only) · **Date:** 2026-10-21
 
 ## Goal
 
@@ -29,7 +29,17 @@ A first usable version: an agent writes a model; `c4ish validate` and `lint` che
 | M4 | Static SVG renderer and `c4ish render [--png]`. No Svelte components yet: the demo page inlines the SVG |
 | M5 | Not started |
 
-Next: pins and the sidecar layout file; a TALA adapter spike against the same layout invariants; the viewer.
+## Phase 2 status (2026-10-21)
+
+| Area | State |
+|---|---|
+| Notation | Card colour = pattern, line colour = enforcement; change state on badge + border, reused faded (DECISIONS 19–20) |
+| Page | Diagram first, notes and compact key in a right column; details/contracts in `--appendix` markdown (21) |
+| Layout | Own label placement after routing; `direction: 'auto'` picks top-down or left-to-right by score (22) |
+| M4 | Svelte components (`c4ish/viewer`) over the shared `Diagram` (23) |
+| M5 | Viewing done: `/viewer` (offline, adapter-static) opens or drops model + profile, bundled examples, view tabs, Ctrl/Cmd+wheel zoom, pan, fit, side panel, hover neighbourhood, legend highlights, "only changes", SVG export, deep links. **Not built:** drag/resize/pin, sidecar save, re-layout |
+
+Next: pins and the sidecar layout file (via the `override` hook); a TALA adapter spike against the same layout invariants; less dead space in disconnected views (component packing).
 
 ## Risks
 - **Layout and routing quality.** TALA handles hierarchical placement but ignores preset waypoints; strict containment and stable routes after manual moves aren't guaranteed by any tested open-source option. The fallback: recompute only the routes a move affects, and accept engine routes otherwise. A commercial router is an option, but only after it passes the same tests.

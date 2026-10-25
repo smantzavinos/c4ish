@@ -10,7 +10,7 @@ const USAGE = `c4ish — reviewable architecture diagrams of a planned change
 
 Usage:
   c4ish validate <model.json> [--profile p.json] [--strict]
-  c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--no-details]
+  c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
 
 validate  Schema + semantic checks + notation lint. Exit 1 on errors (or warnings with --strict).
 render    Writes SVG. --all renders every view to <out-dir or model dir>/<view>.svg.
@@ -96,7 +96,7 @@ async function main(argv: string[]): Promise<number> {
 	const views = flags.has('all') ? model.views.map((v) => v.id) : [typeof flags.get('view') === 'string' ? (flags.get('view') as string) : model.views[0].id];
 	const outFlag = flags.get('out');
 	for (const view of views) {
-		const res = await renderView(model, result.profile, { view, details: !flags.has('no-details') });
+		const res = await renderView(model, result.profile, { view, appendix: flags.has('appendix') });
 		for (const w of res.warnings) console.error(`warning ${file} [view:${view}]: ${w}`);
 		let out: string | undefined;
 		if (views.length > 1 || flags.has('all')) out = resolve(typeof outFlag === 'string' ? outFlag : dirname(file), `${view}.svg`);
@@ -107,6 +107,11 @@ async function main(argv: string[]): Promise<number> {
 		}
 		writeFileSync(out, res.svg);
 		console.error(`wrote ${out} (${res.width}×${res.height})`);
+		if (res.appendix) {
+			const md = out.replace(/\.svg$/, '') + '.appendix.md';
+			writeFileSync(md, res.appendix);
+			console.error(`wrote ${md}`);
+		}
 		if (flags.has('png')) {
 			const png = out.replace(/\.svg$/, '') + '.png';
 			const density = typeof flags.get('density') === 'string' ? (flags.get('density') as string) : '110';
