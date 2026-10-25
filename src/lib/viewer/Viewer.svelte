@@ -17,7 +17,9 @@
 
 	// Deep links: ?example=<id>&view=<id>&select=<id>&highlight=<key,key>&only=changes
 	const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
-	const first = untrack(() => examples.find((x) => x.id === params.get('example')) ?? examples[0]);
+	// Served models (c4ish view): ?src=<model url>[&profile=<url>][&live=<server-sent events url>][&name=<label>]
+	const src = params.get('src');
+	const first = src ? undefined : untrack(() => examples.find((x) => x.id === params.get('example')) ?? examples[0]);
 	let pending: FilterState | undefined = {
 		...initialState(),
 		highlight: (params.get('highlight') ?? '').split(',').filter(Boolean),
@@ -26,7 +28,9 @@
 	};
 	let modelJson: unknown = $state(first?.model);
 	let profileJson: unknown = $state(first?.profile);
-	let sourceName = $state(first?.label ?? '');
+	let sourceName = $state(first?.label ?? params.get('name') ?? src ?? '');
+	/** Set by a live reload: keep the reader's view, selection, tour step and camera. */
+	let reloading = false;
 	let exampleId = $state(first?.id ?? '');
 	let viewId: string | undefined = $state(params.get('view') ?? undefined);
 	let diagram: Diagram | undefined = $state.raw();
@@ -59,15 +63,53 @@
 				if (cancelled) return;
 				diagram = d;
 				error = '';
+				const touring = untrack(() => tourState && !tourState.exploring);
+				if (reloading) {
+					reloading = false;
+					pending = undefined;
+					const cs = untrack(() => currentStep(tourState, res.model!.tours ?? []));
+					if (touring && cs && cs.step.view === d.scene.view.id) filter = stepFilter(res.model!, res.profile!, cs.step);
+					return;
+				}
 				filter = pending ?? { ...initialState(), onlyChanges: filter.onlyChanges };
 				pending = undefined;
-				const touring = untrack(() => tourState && !tourState.exploring);
 				requestAnimationFrame(() => (touring ? canvas?.focusOn(stepBounds(d, filter), false) : canvas?.fit()));
 			})
 			.catch((e: unknown) => (error = e instanceof Error ? e.message : String(e)));
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	async function loadServed(reload: boolean) {
+		if (!src) return;
+		try {
+			const get = async (url: string) => {
+				const r = await fetch(url, { cache: 'no-store' });
+				if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+				return r.json();
+			};
+			const profileUrl = params.get('profile');
+			const [m, p] = await Promise.all([get(src), profileUrl ? get(profileUrl) : Promise.resolve(undefined)]);
+			reloading = reload && !!diagram;
+			modelJson = m;
+			profileJson = p;
+			exampleId = '';
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	$effect(() => {
+		if (!src) return;
+		untrack(() => loadServed(false));
+		const live = params.get('live');
+		if (!live) return;
+		const es = new EventSource(live);
+		es.addEventListener('change', () => {
+			if (!untrack(() => exampleId)) loadServed(true); // not after the reader picked an example
+		});
+		return () => es.close();
 	});
 
 	// a deep link (#tour=…&step=…) starts the tour once the model is loaded

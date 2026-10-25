@@ -159,8 +159,8 @@ A data connector without enforcement is a lint warning. It's drawn as a bright m
 ## 7a. Tour steps
 
 - **Caption** replaces the review-focus card: a pale blue card with a 3px tour-blue left rule, caps "TOUR · n / N · TOUR TITLE", the step title and narration (light markdown: bold, code, lists).
-- **Lighting:** lit items keep full ink; everything else drops to 0.16 opacity (unless `dimOthers: false`). When a step names notes, the other notes drop to 0.35.
-- **Path:** each connector on the path gets a soft tour-blue glow under the normal stroke (its enforcement colour is kept). A numbered tour-blue badge (white numeral, 16px) sits on each connector, clear of cards, labels and earlier badges. In the viewer, the glow draws on in order (260ms per connector) and badges pop in; both are skipped with `prefers-reduced-motion`.
+- **Lighting:** lit items keep full ink; everything else drops to 0.16 opacity (unless `dimOthers: false`). Notes the step does not name drop to 0.35. When it names none, all of them do.
+- **Path:** each connector on the path gets a soft tour-blue glow under the normal stroke (its enforcement colour is kept). A numbered tour-blue badge (r = 11, white numeral) sits on each connector. It is scaled to stay readable: static pages use ×1 up to 1200×1000 and grow with page size to at most ×2; the viewer uses 1/zoom, capped at ×3, so badges keep their on-screen size when zoomed out. Each badge sits clear of cards, labels and earlier badges. In the viewer, the glow draws on in order (260ms per connector) and badges pop in; both are skipped with `prefers-reduced-motion`.
 - **Selection ring:** 2px tour blue around the selected card.
 - **Tour blue `#2563eb`** is used only for tour, path and selection. Callout discs stay ink, so order and note numbers never share a look.
 

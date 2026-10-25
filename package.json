@@ -22,6 +22,7 @@
   },
   "files": [
     "dist",
+    "build",
     "!dist/**/*.test.*",
     "!dist/**/*.spec.*",
     "!dist/test",

@@ -81,7 +81,7 @@ A **profile** is project-owned data: element types and variations (with catalog 
 
 ### Tours
 
-A **tour** is an authored walkthrough of the change for review. Each step is a view plus the state a reviewer could set by hand: what is lit (`focus`, `select`, legend `highlight` keys), an ordered `path` of connectors (numbered on the drawing), which notes to show, plus short narration. The viewer plays it as a step card. The CLI exports it as static pages. Lint checks references and path contiguity, and warns about changes, proposals, risks and divergences that no step covers. A good review tour follows: what changes for the user → main flows as paths → patterns in use → proposed patterns → removed/reused → risks. See DECISIONS 24–26.
+A **tour** is an authored walkthrough of the change for review. Each step is a view plus the state a reviewer could set by hand: what is lit (`focus`, `select`, legend `highlight` keys), an ordered `path` of connectors (numbered on the drawing), which notes to show, plus short narration. The viewer plays it as a step card. The CLI exports it as static pages. Lint checks references and path contiguity. It warns, per tour, about changes, proposals, risks and divergences that no step *points at* through focus, select, a path or a named note. Broad highlights are fine for an overview step but don't count. A good review tour follows: what changes for the user → main flows as paths → patterns in use → proposed patterns → removed/reused → risks. See DECISIONS 24–29. `c4ish view <model> --tour` opens it in the viewer with live reload.
 
 ```json
 "tours": [{ "id": "review", "title": "Review: wiring writes", "steps": [  // excerpt; read-path ids illustrative

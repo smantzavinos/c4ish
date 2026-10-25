@@ -34,7 +34,8 @@ pnpm c4ish validate examples/paged-reads/model.c4ish.json
 pnpm c4ish render examples/versioned-wiring/model.c4ish.json --view product --out product.svg --png
 pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
 pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.svg.appendix.md (details, contracts, notes)
-pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg/png, index.html, tour.md
+pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg (+png), index.html, tour.md
+pnpm c4ish view <model> --tour  # local viewer with this model, in tour mode; live-reloads on save (--step id, --port n, --no-open)
 pnpm dev               # demo page with the example diagrams; /viewer is the interactive viewer
 pnpm build             # static site in build/ (open build/viewer/index.html via any static server; works offline)
 pnpm check && pnpm test
@@ -45,6 +46,12 @@ pnpm check && pnpm test
 `/viewer` opens a model (and optionally its profile) from a file picker or drag-and-drop, or one of the bundled examples. Ctrl/Cmd + wheel zooms around the cursor; a plain wheel pans. Drag to pan freely at any zoom, including beyond the diagram edges; dragging continues outside the canvas until release. **Fit** centres the whole diagram with a margin. Click a card or connector for its details, pattern (with catalog reference), libraries, fields, contract, enforcement and notes. Hover shows its neighbourhood. Click key rows to highlight a pattern, connector style or change state; **Only changes** hides reused context. **Export SVG** writes the same page as the CLI. Deep links: `?example=versioned-wiring&view=engineering&select=rewire&highlight=pattern:api/tenant-query&only=changes`.
 
 **Tours.** When the model has `tours`, a **▶ Tour** button appears. The step card replaces the notes column (step n / N, narration, the step's notes, Prev/Next, the step list), ←/→ step and Esc exits. The camera glides to the step and path connectors are numbered in order. Click around freely: the card offers **Back to this step**. Deep link: `?example=versioned-wiring#tour=review&step=write-path`. The same tour exports as static pages with `c4ish tour` (see `examples/*/tour/`).
+
+**Coverage.** Lint `tour-coverage` checks each tour on its own. Every new, modified or removed element, proposed-pattern element, risk note and divergence must be pointed at by some step through `focus`, `select`, a `path` (its connectors, their endpoints and the frames they enter) or a named note. Highlights by change state or pattern are fine for an overview step but don't count.
+
+**`c4ish view`** serves this viewer on localhost with one model (and its profile) loaded, opens the browser, and reloads when either file changes. The view, selection, tour step and camera are kept. It uses the prebuilt viewer in `build/` and builds it once if it is missing (`--rebuild` forces a build). Any static host can do the same with `/viewer/?src=<model url>&profile=<profile url>`.
+
+PNGs are never committed. Use `--png` for local rasters.
 
 Library: `import { check, renderView, buildDiagram, buildLegend } from 'c4ish'`; Svelte components from `c4ish/viewer`. `check(modelJson, profileJson)` returns diagnostics plus the resolved model and profile. `renderView(model, profile, { view })` returns `{ svg, width, height, geometry }`. A model names its profile by relative path (`"profile": "../profile.c4ish.json"`); profiles can `"extends": "default"`.
 

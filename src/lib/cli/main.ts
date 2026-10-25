@@ -7,6 +7,7 @@ import type { Diagnostic } from '../model/validate.js';
 import { renderView } from '../render/page.js';
 import { exportTour } from '../render/tour-export.js';
 import { tourCoverage } from '../model/tours.js';
+import { serveViewer } from './serve.js';
 
 const USAGE = `c4ish — reviewable architecture diagrams of a planned change
 
@@ -14,12 +15,16 @@ Usage:
   c4ish validate <model.json> [--profile p.json] [--strict]
   c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
+  c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
 
 validate  Schema + semantic checks + notation lint. Exit 1 on errors (or warnings with --strict).
 render    Writes SVG. --all renders every view to <out-dir or model dir>/<view>.svg.
           --png also rasterises with ImageMagick (magick) when available.
 tour      Writes one SVG per tour step plus index.html (offline slideshow) and tour.md into
           --out (default <model dir>/tour; one sub-directory per tour when there are several).
+view      Serves the offline viewer on localhost with this model (and profile) loaded, opens the
+          browser and live-reloads when either file changes. --tour starts the (named or first)
+          tour, --step at that step. Uses the prebuilt viewer (build/; built once if missing).
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
 
 interface Args {
@@ -36,7 +41,9 @@ function parse(argv: string[]): Args {
 		if (a.startsWith('--')) {
 			const key = a.slice(2);
 			const next = argv[i + 1];
-			if (['profile', 'view', 'out', 'density', 'tour'].includes(key) && next !== undefined) {
+			// --tour may stand alone (view: start the first tour)
+			const takes = ['profile', 'view', 'out', 'density', 'step', 'port'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
+			if (takes && next !== undefined) {
 				flags.set(key, next);
 				i++;
 			} else flags.set(key, true);
@@ -90,6 +97,7 @@ async function main(argv: string[]): Promise<number> {
 		return errors || (flags.has('strict') && warns) ? 1 : 0;
 	}
 	if (cmd === 'tour') return writeTours(file, result, flags);
+	if (cmd === 'view') return view(file, flags, errors, warns);
 	if (cmd !== 'render') {
 		console.error(`unknown command "${cmd}"\n\n${USAGE}`);
 		return 1;
@@ -121,6 +129,44 @@ async function main(argv: string[]): Promise<number> {
 		if (flags.has('png')) toPng(out, flags);
 	}
 	return 0;
+}
+
+async function view(file: string, flags: Map<string, string | true>, errors: number, warns: number): Promise<number> {
+	const str = (k: string) => (typeof flags.get(k) === 'string' ? (flags.get(k) as string) : undefined);
+	const port = str('port') ? Number(str('port')) : undefined;
+	if (port !== undefined && !Number.isInteger(port)) {
+		console.error(`--port must be a number`);
+		return 1;
+	}
+	console.error(`${file}: ${errors} error(s), ${warns} warning(s)`);
+	const server = await serveViewer({
+		file,
+		profile: str('profile'),
+		tour: flags.has('tour') ? (str('tour') ?? true) : undefined,
+		step: str('step'),
+		port,
+		open: !flags.has('no-open'),
+		rebuild: flags.has('rebuild'),
+		onChange: () => {
+			try {
+				const { modelJson, profileJson } = load(file, flags.get('profile'));
+				const ds = check(modelJson, profileJson).diagnostics;
+				const e = ds.filter((d) => d.severity === 'error').length;
+				console.error(`${new Date().toLocaleTimeString()} reloaded ${file}: ${e} error(s), ${ds.length - e} warning(s)`);
+			} catch (err) {
+				console.error(`${new Date().toLocaleTimeString()} ${(err as Error).message}`);
+			}
+		}
+	});
+	console.error(`c4ish viewer: ${server.url}\n(watching for changes; Ctrl+C to stop)`);
+	return new Promise<number>((done) => {
+		const stop = () => {
+			server.close();
+			done(0);
+		};
+		process.once('SIGINT', stop);
+		process.once('SIGTERM', stop);
+	});
 }
 
 function toPng(svgFile: string, flags: Map<string, string | true>): void {

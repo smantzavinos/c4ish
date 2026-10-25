@@ -46,9 +46,10 @@ Next: pins and the sidecar layout file (via the `override` hook); a TALA adapter
 | Area | State |
 |---|---|
 | Schema | `tours[]` with steps over view, focus, select, highlight keys, ordered `path` (with `{jump}`), notes, only-changes (DECISIONS 24) |
-| Lint | Tour reference errors, `tour-path-gap`, `tour-coverage` with uncovered ids (25) |
-| Static | `c4ish tour` → per-step SVG/PNG, offline `index.html`, `tour.md`; examples export to `examples/*/tour/` (26) |
+| Lint | Tour reference errors, `tour-path-gap`, strict per-tour `tour-coverage` with uncovered ids (25, 27) |
+| Static | `c4ish tour` → per-step SVG (+ local PNG), offline `index.html`, `tour.md`; examples export to `examples/*/tour/` (26) |
 | Viewer | ▶ Tour, step card, ←/→/Esc, camera glide, path draw-on + badges (reduced-motion safe), explore/resume, `#tour=&step=` links (24) |
+| CLI | `c4ish view` local server with live reload and `--tour/--step` (28); PNGs never committed (29) |
 
 Next: authoring help (write a step from the current viewer state), timing a cold reviewer through a tour.
 
