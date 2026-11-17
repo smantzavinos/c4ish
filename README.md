@@ -27,9 +27,23 @@ A reviewer should be able to look at one diagram and say "yes, I understand what
 
 Editing the model itself in the viewer comes later.
 
+## Install
+
+With Nix, from any directory:
+
+```bash
+nix run github:smantzavinos/c4ish -- validate plan.c4ish.json
+nix profile install github:smantzavinos/c4ish     # or add the flake's `packages.<system>.default` to your config
+```
+
+The package holds the CLI and the prebuilt viewer, so `c4ish view` works offline. In a checkout, use `pnpm c4ish …` as below.
+
 ## Usage
 
 ```bash
+c4ish guide            # the authoring reference (docs/AUTHORING.md): how to write a model, with one complete example
+c4ish schema model     # the JSON Schema of a model; `schema profile` for a profile
+c4ish --version        # tool version and the schema versions it reads
 pnpm c4ish validate examples/paged-reads/model.c4ish.json
 pnpm c4ish render examples/versioned-wiring/model.c4ish.json --view product --out product.svg --png
 pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
@@ -60,4 +74,7 @@ Nix provides only the toolchain (Node 22, pnpm, Git); pnpm manages JS dependenci
 
 ```bash
 nix develop
+nix build              # the package; it also runs the installed CLI from outside the source tree
 ```
+
+After `pnpm-lock.yaml` changes, update the dependency hash in `nix/package.nix`: set it to `lib.fakeHash`, run `nix build`, and copy the hash it reports.

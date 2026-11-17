@@ -35,7 +35,7 @@ export interface ViewOptions {
 }
 
 /** The package root (the directory holding c4ish's package.json), from this file's location. */
-function packageRoot(): string {
+export function packageRoot(): string {
 	let dir = dirname(fileURLToPath(import.meta.url));
 	for (let i = 0; i < 6; i++) {
 		const pj = join(dir, 'package.json');

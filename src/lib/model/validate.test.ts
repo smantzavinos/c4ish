@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { check } from '../api.js';
 import { defaultProfile } from '../profile/default.js';
@@ -18,6 +19,15 @@ const base: Model = {
 	relationships: [{ id: 'w', from: 'svc', to: 'tbl', kind: 'writes', enforcement: 'platform', change: 'new' }]
 };
 const codes = (m: unknown, p?: unknown) => check(m, p).diagnostics.map((d) => d.code);
+
+describe('authoring guide', () => {
+	it('its complete example validates with no errors or warnings', () => {
+		const guide = readFileSync('docs/AUTHORING.md', 'utf8');
+		const blocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]).filter((b) => b.includes('"schemaVersion"'));
+		expect(blocks).toHaveLength(1);
+		expect(check(JSON.parse(blocks[0])).diagnostics).toEqual([]);
+	});
+});
 
 describe('examples', () => {
 	for (const name of EXAMPLES)

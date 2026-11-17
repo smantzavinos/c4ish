@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { check } from '../api.js';
 import type { Diagnostic } from '../model/validate.js';
 import { renderView } from '../render/page.js';
 import { exportTour } from '../render/tour-export.js';
 import { tourCoverage } from '../model/tours.js';
-import { serveViewer } from './serve.js';
+import { packageRoot, serveViewer } from './serve.js';
 
 const USAGE = `c4ish — reviewable architecture diagrams of a planned change
 
@@ -16,6 +16,9 @@ Usage:
   c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
   c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
+  c4ish guide
+  c4ish schema   [model | profile]
+  c4ish --version
 
 validate  Schema + semantic checks + notation lint. Exit 1 on errors (or warnings with --strict).
 render    Writes SVG. --all renders every view to <out-dir or model dir>/<view>.svg.
@@ -25,6 +28,8 @@ tour      Writes one SVG per tour step plus index.html (offline slideshow) and t
 view      Serves the offline viewer on localhost with this model (and profile) loaded, opens the
           browser and live-reloads when either file changes. --tour starts the (named or first)
           tour, --step at that step. Uses the prebuilt viewer (build/; built once if missing).
+guide     Prints the authoring reference: how to write a model, with one complete example.
+schema    Prints the JSON Schema of a model (default) or a profile.
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
 
 interface Args {
@@ -76,8 +81,39 @@ function load(file: string, profileFlag: string | true | undefined) {
 	return { modelJson, profileJson, profilePath };
 }
 
+/** The schema version this build reads, taken from the shipped JSON Schema so it cannot drift. */
+function schemaVersion(which: 'model' | 'profile'): number {
+	const schema = JSON.parse(readFileSync(join(packageRoot(), 'schema', `${which}.schema.json`), 'utf8')) as { properties: Record<string, { const: number }> };
+	return schema.properties[which === 'model' ? 'schemaVersion' : 'profileVersion'].const;
+}
+
+/** Commands that take no model file. Returns undefined when `cmd` is not one of them. */
+function info(cmd: string | undefined, arg: string | undefined, flags: Map<string, string | true>): number | undefined {
+	if (flags.has('version') || cmd === 'version') {
+		const { version } = JSON.parse(readFileSync(join(packageRoot(), 'package.json'), 'utf8')) as { version: string };
+		console.log(`c4ish ${version} (model schema v${schemaVersion('model')}, profile schema v${schemaVersion('profile')})`);
+		return 0;
+	}
+	if (cmd === 'guide') {
+		process.stdout.write(readFileSync(join(packageRoot(), 'docs', 'AUTHORING.md'), 'utf8'));
+		return 0;
+	}
+	if (cmd === 'schema') {
+		const which = arg ?? 'model';
+		if (which !== 'model' && which !== 'profile') {
+			console.error(`unknown schema "${which}" (model or profile)`);
+			return 1;
+		}
+		process.stdout.write(readFileSync(join(packageRoot(), 'schema', `${which}.schema.json`), 'utf8'));
+		return 0;
+	}
+	return undefined;
+}
+
 async function main(argv: string[]): Promise<number> {
 	const { cmd, file, flags } = parse(argv);
+	const done = info(cmd, file, flags);
+	if (done !== undefined) return done;
 	if (!cmd || flags.has('help') || cmd === 'help') {
 		console.log(USAGE);
 		return cmd ? 0 : 1;
