@@ -1,5 +1,5 @@
 import type { Diagram } from '../render/diagram.js';
-import { changeStyle } from '../render/node.js';
+import { changeStyle, isDropped } from '../render/node.js';
 
 /**
  * Viewer filter / highlight state, kept free of Svelte so it can be unit-tested.
@@ -68,7 +68,8 @@ export function itemKeys(d: Diagram): Map<string, Set<string>> {
 			if (e.pattern === null) keys.add('pattern:none');
 			for (const p of e.patterns ?? []) keys.add(`pattern:${p}`);
 			for (const part of e.parts ?? []) if (part.pattern) keys.add(`pattern:${part.pattern}`);
-			keys.add(`change:${changeStyle(profile, e.change)}`);
+			// a dropped item is a difference, never unchanged context
+			keys.add(isDropped(e) ? 'revision:removed' : `change:${changeStyle(profile, e.change)}`);
 			if (e.lifecycle) keys.add(`lifecycle:${e.lifecycle}`);
 			const area = d.scene.nodes.get(n.id)?.area;
 			if (area) keys.add(`area:${area}`);
@@ -76,7 +77,7 @@ export function itemKeys(d: Diagram): Map<string, Set<string>> {
 		out.set(n.id, keys);
 	}
 	for (const e of d.edges) {
-		out.set(e.id, new Set([`edge:${e.style.key}`, `change:${changeStyle(profile, e.rel.change)}`]));
+		out.set(e.id, new Set([`edge:${e.style.key}`, isDropped(e.rel) ? 'revision:removed' : `change:${changeStyle(profile, e.rel.change)}`]));
 	}
 	return out;
 }

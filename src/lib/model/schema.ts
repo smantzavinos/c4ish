@@ -142,7 +142,8 @@ export const modelSchema = {
 					implementedBy: { type: 'array', items: id },
 					mappingLabel: text,
 					code: { type: 'array', items: text },
-					views: { type: 'array', items: id }
+					views: { type: 'array', items: id },
+					revision: { enum: ['removed'] }
 				}
 			}
 		},
@@ -166,7 +167,8 @@ export const modelSchema = {
 					delta: { enum: ['added', 'removed'] },
 					fromField: text,
 					toField: text,
-					views: { type: 'array', items: id }
+					views: { type: 'array', items: id },
+					revision: { enum: ['removed'] }
 				}
 			}
 		},

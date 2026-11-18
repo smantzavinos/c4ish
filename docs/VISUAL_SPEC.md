@@ -109,6 +109,8 @@ Change state never touches the header (that's the pattern's).
 
 Context recedes; what changes, what's proposed and what's at risk stands out. Removed stays in place, never deleted.
 
+**Dropped** (`revision: "removed"`, written by `c4ish diff --out`): the item is only in the earlier version of the model. It is drawn like removed, but the border is red (`#dc2626`), 2 wide, and a solid red `DROPPED` badge replaces the change badge. A dropped connector is red, dashed, with a `−` badge and a struck-through red label. A dropped connector differs from a "nothing enforces" one (also red) by its dash, its badge and its struck label. Both have a key row.
+
 ### 4.2 Lifecycle
 
 The profile defines lifecycle states. In the default and product notation:

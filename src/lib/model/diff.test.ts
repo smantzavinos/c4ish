@@ -619,25 +619,72 @@ describe('differenceModel', () => {
 		expect(steps[0].body).toContain('2 difference(s) in 1 item(s): 1 structure, 1 text.');
 	});
 
-	it('a removed element is described, with its surviving parent spotlit', () => {
-		const { steps } = walk((m) => {
+	it('a dropped element is put back where it was, marked, and selected', () => {
+		const { review, steps } = walk((m) => {
 			m.elements = m.elements.filter((e) => e.id !== 'ui');
 			m.relationships = m.relationships!.filter((r) => r.id !== 'call');
 		});
+		// back in its place: after the element that preceded it, inside its former parent
+		expect(review.elements.map((e) => `${e.id}${e.revision ? ' (dropped)' : ''}`)).toEqual(['app', 'ui (dropped)', 'svc', 'tbl', 'log']);
+		expect(review.elements[1]).toMatchObject({ parent: 'app', change: 'reused', revision: 'removed' });
+		expect(review.relationships!.find((r) => r.id === 'call')).toMatchObject({ from: 'ui', to: 'svc', revision: 'removed' });
 		const step = steps.find((s) => s.id === 'element:ui')!;
-		expect(step).toMatchObject({ view: 'eng', focus: ['app'] });
-		expect(step.select).toBeUndefined();
-		expect(step.body).toBe('**Removed** element `ui`. It was a component inside `app`, marked `reused`.');
+		expect(step).toMatchObject({ view: 'eng', focus: ['ui'], select: 'ui', title: 'Dropped: UI' });
+		expect(step.body).toBe('**Dropped** element `ui`. It was a component inside `app`, marked `reused`.');
+		expect(steps.find((s) => s.id === 'relationship:call')).toMatchObject({ view: 'eng', select: 'call' });
 	});
 
-	it('a removed relationship is described, with its ends spotlit', () => {
-		const { steps } = walk((m) => void (m.relationships = m.relationships!.filter((r) => r.id !== 'ref')));
-		expect(steps[1]).toMatchObject({
-			id: 'relationship:ref',
-			view: 'eng',
-			focus: ['tbl', 'log']
+	it('a dropped frame comes back with the children that went with it', () => {
+		const { review, steps } = walk((m) => {
+			m.elements = m.elements.filter((e) => !['app', 'ui', 'svc'].includes(e.id));
+			m.relationships = m.relationships!.filter((r) => r.id === 'ref');
+			m.contracts = [];
+			m.notes = [];
+			m.absences = [];
+			m.tours = [];
 		});
+		expect(review.elements.filter((e) => e.revision).map((e) => `${e.id} in ${e.parent ?? '-'}`)).toEqual(['app in -', 'ui in app', 'svc in app']);
+		// its contract is gone, so the dropped connector no longer names one
+		expect(review.relationships!.find((r) => r.id === 'call')).toEqual({ id: 'call', from: 'ui', to: 'svc', kind: 'calls', change: 'new', revision: 'removed' });
+		expect(steps.find((s) => s.id === 'element:svc')).toMatchObject({ select: 'svc' });
+	});
+
+	it('a dropped relationship is drawn again and selected', () => {
+		const { review, steps } = walk((m) => void (m.relationships = m.relationships!.filter((r) => r.id !== 'ref')));
+		expect(review.relationships!.at(-1)).toMatchObject({ id: 'ref', revision: 'removed' });
+		expect(steps[1]).toMatchObject({ id: 'relationship:ref', view: 'eng', focus: ['ref'], select: 'ref' });
 		expect(steps[1].body).toContain('It went from `tbl` to `log` (references, enforced by `platform`).');
+	});
+
+	it('a dropped element keeps no pattern that is gone too', () => {
+		const before = clone(base);
+		before.elements.push({ id: 'job', kind: 'component', parent: 'app', title: 'Job', change: 'new', pattern: 'api/batch', patterns: ['api/batch', 'api/mutation'] });
+		const later = clone(base);
+		later.proposedPatterns = [];
+		const review = differenceModel(before, later, profile, diffModels(before, later));
+		const job = review.elements.find((e) => e.id === 'job')!;
+		expect(job).toMatchObject({ revision: 'removed', patterns: ['api/mutation'] });
+		expect('pattern' in job).toBe(false);
+	});
+
+	it('a view that listed a dropped element lists it again', () => {
+		const { review, steps } = walk((m) => {
+			m.elements = m.elements.filter((e) => e.id !== 'log');
+			m.relationships = m.relationships!.filter((r) => r.id !== 'ref');
+			m.views[1].include = ['tbl'];
+		});
+		expect(review.views[1].include).toEqual(['tbl', 'log']);
+		expect(steps.find((s) => s.id === 'element:log')).toMatchObject({ view: 'eng', select: 'log' });
+	});
+
+	it('falls back to words when what was dropped no longer fits the later version', () => {
+		const before = clone(base);
+		before.elements.push({ id: 'odd', kind: 'no-such-kind', parent: 'app', title: 'Odd', change: 'new' });
+		const review = differenceModel(before, base, profile, diffModels(before, base));
+		expect(review.elements.map((e) => e.id)).toEqual(base.elements.map((e) => e.id));
+		expect(review.tours![0].steps[1]).toMatchObject({ id: 'element:odd', view: 'eng', focus: ['app'] });
+		expect(review.tours![0].steps[1].select).toBeUndefined();
+		expect(check(review).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
 	});
 
 	it('an added relationship is selected in a view that draws it', () => {

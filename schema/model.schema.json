@@ -373,6 +373,11 @@
 							"type": "string",
 							"pattern": "^[A-Za-z_][A-Za-z0-9_.:/-]*$"
 						}
+					},
+					"revision": {
+						"enum": [
+							"removed"
+						]
 					}
 				}
 			}
@@ -470,6 +475,11 @@
 							"type": "string",
 							"pattern": "^[A-Za-z_][A-Za-z0-9_.:/-]*$"
 						}
+					},
+					"revision": {
+						"enum": [
+							"removed"
+						]
 					}
 				}
 			}

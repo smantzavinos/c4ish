@@ -144,6 +144,11 @@ export interface Element {
 	code?: string[];
 	/** Restrict this element to these view ids. */
 	views?: string[];
+	/**
+	 * `removed`: an earlier version of the model had this item and this version does not. Written by
+	 * `c4ish diff --out` so the item can still be drawn; not for authoring.
+	 */
+	revision?: 'removed';
 }
 
 export interface Field {
@@ -202,6 +207,8 @@ export interface Relationship {
 	fromField?: string;
 	toField?: string;
 	views?: string[];
+	/** See `Element.revision`. */
+	revision?: 'removed';
 }
 
 export interface Contract {

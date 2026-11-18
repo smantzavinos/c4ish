@@ -167,7 +167,7 @@ Items are matched by **id**, so ids must not change between versions. An item is
 - **Members are matched by name too.** A field or an index by its `id`; a tie by its `id`, or else by its pair of fields; a part by its `id`, or else by its title. Without an id, a retitled part reads as one part removed and another added.
 - **A note without an id** is matched by what it is on, its kind and its rank among those. Give a note an id to keep it stable.
 - **Order doesn't matter,** except the fields of an index.
-- **The review model** from `--out` is the later version with its tours replaced by one generated tour: an overview, then one step per item that differs. An item that is gone is described in words, with the place it was spotlit. It honours `--only`. It is for viewing; its tour does not try to pass tour coverage.
+- **The review model** from `--out` is the later version with its tours replaced by one generated tour: an overview, then one step per item that differs. An element or relationship that is gone is put back and drawn where it was, marked `DROPPED`: red dashed border, title struck through. The tool marks it with `revision: "removed"`; do not write that yourself. Anything else that is gone (a contract, a note, a field, a part) is described in words, with the place it was spotlit. It honours `--only`. It is for viewing; its tour does not try to pass tour coverage.
 
 ## Example
 

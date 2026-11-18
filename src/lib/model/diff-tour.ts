@@ -1,5 +1,6 @@
 import { describeField, noteKeys, showValue, type Difference, type ModelDiff } from './diff.js';
 import type { Absence, Contract, Element, Model, Note, PatternDef, Profile, Relationship, Tour, TourStep } from './types.js';
+import { validateModel } from './validate.js';
 import { viewMembers, viewRelationships } from './view.js';
 
 /**
@@ -7,8 +8,11 @@ import { viewMembers, viewRelationships } from './view.js';
  *
  * The result is the later version with its tours replaced by one generated tour: an overview,
  * then one step per item that was added, removed or changed. Each step shows the item where the
- * later version draws it. An item that is gone is described in words, with the place it was
- * (its surviving parent, or the ends of a removed relationship) spotlit.
+ * later version draws it.
+ *
+ * An element or relationship that is gone is put back, marked `revision: "removed"`, so it is
+ * drawn where it was (DECISIONS 48). Anything else that is gone (a contract, a note, a field) is
+ * described in words, with the place it was spotlit.
  */
 
 export const DIFFERENCE_TOUR = 'differences';
@@ -25,11 +29,8 @@ const KIND_LABEL: Record<Difference['kind'], string> = {
 	view: 'view',
 	tour: 'tour'
 };
-const DID: Record<Difference['change'], string> = {
-	added: 'Added',
-	removed: 'Removed',
-	changed: 'Changed'
-};
+// "dropped", not "removed": removed is a change state (the change deletes the code)
+const DID: Record<Difference['change'], string> = { added: 'Added', removed: 'Dropped', changed: 'Changed' };
 
 interface Shown {
 	view: string;
@@ -86,10 +87,65 @@ function body(d: Difference): string {
 }
 
 /**
- * Build the review model. `diff` is the comparison to walk (filter it first to walk less);
- * `after` must be valid against `profile`.
+ * The later version with the elements and relationships the comparison reports as gone put back
+ * and marked dropped. Each returns to its place: after the element that preceded it, inside its
+ * former parent, in the views that listed it.
  */
-export function differenceModel(before: Model, after: Model, profile: Profile, diff: ModelDiff): Model {
+function withDropped(before: Model, after: Model, profile: Profile, diff: ModelDiff): Model {
+	const model = structuredClone(after);
+	const goneIds = (kind: Difference['kind']) => new Set(diff.differences.filter((d) => d.kind === kind && d.change === 'removed').map((d) => d.id));
+	const goneElements = goneIds('element');
+	const goneRels = goneIds('relationship');
+	if (!goneElements.size && !goneRels.size) return model;
+
+	const patterns = new Set([...Object.keys(profile.patterns), ...(model.proposedPatterns ?? []).map((p) => p.id)]);
+	const known = (p: string | null | undefined) => p === null || p === undefined || patterns.has(p);
+	let previous: string | undefined;
+	for (const e of before.elements) {
+		if (goneElements.has(e.id)) {
+			// a pattern that is gone too cannot be drawn: the step says what it was
+			const ghost: Element = { ...structuredClone(e), revision: 'removed' };
+			if (!known(ghost.pattern)) delete ghost.pattern;
+			if (ghost.patterns) ghost.patterns = ghost.patterns.filter(known);
+			for (const part of ghost.parts ?? []) if (!known(part.pattern)) delete part.pattern;
+			const at = previous === undefined ? -1 : model.elements.findIndex((x) => x.id === previous);
+			model.elements.splice(at + 1, 0, ghost);
+		}
+		if (model.elements.some((x) => x.id === e.id)) previous = e.id;
+	}
+	const elements = new Set(model.elements.map((e) => e.id));
+	const contracts = new Set((model.contracts ?? []).map((c) => c.id));
+	for (const r of before.relationships ?? []) {
+		if (!goneRels.has(r.id) || !elements.has(r.from) || !elements.has(r.to)) continue;
+		const ghost: Relationship = { ...structuredClone(r), revision: 'removed' };
+		if (ghost.contract && !contracts.has(ghost.contract)) delete ghost.contract;
+		(model.relationships ??= []).push(ghost);
+	}
+	// a view that listed a dropped item by id lists it again
+	const earlier = new Map(before.views.map((v) => [v.id, v]));
+	for (const v of model.views) {
+		const was = earlier.get(v.id);
+		if (!was) continue;
+		const back = (now: string[] | undefined, then: string[] | undefined, gone: Set<string>) => {
+			const add = (then ?? []).filter((id) => gone.has(id) && !now?.includes(id));
+			return add.length ? [...(now ?? []), ...add] : now;
+		};
+		if (v.include) v.include = back(v.include, was.include, goneElements);
+		v.exclude = back(v.exclude, was.exclude, goneElements);
+		v.omitRelationships = back(v.omitRelationships, was.omitRelationships, goneRels);
+		for (const k of ['exclude', 'omitRelationships'] as const) if (v[k] === undefined) delete v[k];
+	}
+	// what was dropped may no longer fit the later version (a kind the profile lost, a parent that moved)
+	const broken = validateModel({ ...model, tours: [] }, profile).some((d) => d.severity === 'error');
+	return broken ? structuredClone(after) : model;
+}
+
+/**
+ * Build the review model. `diff` is the comparison to walk (filter it first to walk less);
+ * `later` must be valid against `profile`.
+ */
+export function differenceModel(before: Model, later: Model, profile: Profile, diff: ModelDiff): Model {
+	const after = withDropped(before, later, profile, diff);
 	const shown: Shown[] = after.views.map((v) => {
 		const members = viewMembers(after, profile, v);
 		return { view: v.id, members, rels: viewRelationships(after, v, members) };
@@ -138,10 +194,11 @@ export function differenceModel(before: Model, after: Model, profile: Profile, d
 		const item = (d.after ?? d.before) as Record<string, unknown>;
 		switch (d.kind) {
 			case 'element':
-				return d.change === 'removed' ? onElements([survivor((d.before as Element).parent)]) : onElements([d.id], d.id);
+				// a dropped element is drawn again; if it could not be, its surviving parent stands in
+				return elements.has(d.id) ? onElements([d.id], d.id) : onElements([survivor((d.before as Element).parent)]);
 			case 'relationship': {
 				const r = item as unknown as Relationship;
-				return (d.change !== 'removed' && onRelationship(d.id)) || onElements([r.from, r.to]);
+				return (rels.has(d.id) && onRelationship(d.id)) || onElements([r.from, r.to]);
 			}
 			case 'contract': {
 				const users = [...(after.relationships ?? []), ...(before.relationships ?? [])].filter((r) => r.contract === d.id && rels.has(r.id));
@@ -229,5 +286,5 @@ export function differenceModel(before: Model, after: Model, profile: Profile, d
 		summary: `${after.title}: what differs from the earlier version.`,
 		steps
 	};
-	return { ...structuredClone(after), tours: [tour] };
+	return { ...after, tours: [tour] };
 }

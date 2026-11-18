@@ -65,11 +65,11 @@ Not yet:
 
 ## Comparing versions (2026-11-18)
 
-Done: `c4ish diff` compares two versions of a model by id, with an aspect on every difference, and writes a review model whose tour walks what differs; optional `id` on parts (DECISIONS 42–47).
+Done: `c4ish diff` compares two versions of a model by id, with an aspect on every difference, and writes a review model whose tour walks what differs; optional `id` on parts; a dropped element or relationship is drawn in its place, marked (DECISIONS 42–48).
 
 Not yet:
-- drawing an item that is gone. The review tour describes it in words and spotlights where it was;
-- a marker in the drawing for "differs from the earlier version", separate from the change state;
+- drawing a field, part, contract or note that is gone. The review tour describes it in words and spotlights where it was;
+- a marker in the drawing for an item that was added or changed since the earlier version, separate from the change state;
 - `c4ish view` taking the two versions directly, without the review file in between.
 
 ## Risks

@@ -26,7 +26,13 @@ export interface Used {
 	absence: boolean;
 	areas: Set<string>;
 	mapping: boolean;
+	/** Some drawn item is dropped (only in the earlier version). */
+	dropped: boolean;
 }
+
+/** Badge on an item that only the earlier version of the model had (`revision: "removed"`). */
+export const DROPPED_BADGE = 'DROPPED';
+export const isDropped = (x: { revision?: string } | undefined): boolean => x?.revision === 'removed';
 
 export function newUsed(): Used {
 	return {
@@ -44,7 +50,8 @@ export function newUsed(): Used {
 		details: false,
 		absence: false,
 		areas: new Set(),
-		mapping: false
+		mapping: false,
+		dropped: false
 	};
 }
 
@@ -309,8 +316,8 @@ export function badgeWidth(label: string | undefined): number {
 	return label ? Math.ceil(measure(label, BADGE_FONT, 'b', 0.06) + 12) : 0;
 }
 
-/** Change badge: NEW solid ink, MODIFIED outlined ink, REMOVED solid graphite. */
-export function drawBadge(x: number, y: number, label: string, style: ChangeStyle): string {
+/** Change badge: NEW solid ink, MODIFIED outlined ink, REMOVED solid graphite, DROPPED solid red. */
+export function drawBadge(x: number, y: number, label: string, style: ChangeStyle | 'dropped'): string {
 	const w = badgeWidth(label);
 	const h = 17;
 	let fill: string = C.ink;
@@ -322,6 +329,9 @@ export function drawBadge(x: number, y: number, label: string, style: ChangeStyl
 	} else if (style === 'removed') {
 		fill = C.slate;
 		stroke = C.slate;
+	} else if (style === 'dropped') {
+		fill = C.dropped;
+		stroke = C.dropped;
 	} else if (style === 'reused') {
 		fill = C.white;
 		stroke = C.line;
@@ -420,10 +430,13 @@ interface CardStyle {
 
 function cardStyle(n: SceneNode, scene: Scene): CardStyle {
 	const { profile } = scene;
-	const style = changeStyle(profile, n.el.change);
+	const dropped = isDropped(n.el);
+	// a dropped item reads as removed (dashed, struck through), in the dropped colour
+	const style = dropped ? 'removed' : changeStyle(profile, n.el.change);
 	const base: CardStyle = { border: C.ink, borderWidth: 1.5, fill: C.white, title: C.ink, body: C.slate, strike: false, opacity: 1 };
 	if (style === 'reused') Object.assign(base, { border: C.faint, borderWidth: 1, opacity: 0.5 });
 	else if (style === 'removed') Object.assign(base, { border: C.slate, borderWidth: 1.75, dash: '6 4', fill: C.surface, title: C.slate, body: C.muted, strike: true });
+	if (dropped) Object.assign(base, { border: C.dropped, borderWidth: 2 });
 	if (style !== 'removed' && n.el.lifecycle) {
 		const lc = profile.lifecycle[n.el.lifecycle];
 		if (lc) {
@@ -499,10 +512,12 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 	const e = n.el;
 	const st = cardStyle(n, scene);
 	const id = identity(n, scene);
-	const style = changeStyle(profile, e.change);
-	used.change.add(style);
+	const dropped = isDropped(e);
+	const style = dropped ? 'removed' : changeStyle(profile, e.change);
+	if (dropped) used.dropped = true;
+	else used.change.add(style);
 	if (n.area && notation.colour.nodes === 'area') used.areas.add(n.area);
-	const badge = changeBadge(profile, e.change);
+	const badge = dropped ? DROPPED_BADGE : changeBadge(profile, e.change);
 	const pad = S.nodePad;
 	const left = BAND + pad;
 	const detailsW = hasDetails(e) ? 20 : 0;
@@ -652,7 +667,7 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 		let bx = width - pad;
 		if (badge) {
 			bx -= badgeWidth(badge);
-			out.push(drawBadge(bx, 9, badge, style));
+			out.push(drawBadge(bx, 9, badge, dropped ? 'dropped' : style));
 			bx -= 6;
 		}
 		const tag = ctx.detailTags.get(e.id);
@@ -787,11 +802,13 @@ export interface FrameMeasure {
 export function measureFrame(n: SceneNode, scene: Scene, used: Used): FrameMeasure {
 	const { profile, notation } = scene;
 	const e = n.el;
-	const style = changeStyle(profile, e.change);
-	used.change.add(style);
+	const dropped = isDropped(e);
+	const style = dropped ? 'removed' : changeStyle(profile, e.change);
+	if (dropped) used.dropped = true;
+	else used.change.add(style);
 	const areaDef = notation.colour.nodes === 'area' && n.area ? profile.areas[n.area] : undefined;
 	if (areaDef) used.areas.add(n.area!);
-	const badge = changeBadge(profile, e.change);
+	const badge = dropped ? DROPPED_BADGE : changeBadge(profile, e.change);
 	const title = e.title.toUpperCase();
 	const chips = elementChips(n, scene, used);
 	const libs = libraryChips(n, scene, used);
@@ -822,9 +839,10 @@ export function measureFrame(n: SceneNode, scene: Scene, used: Used): FrameMeasu
 		let dash: string | undefined;
 		const fg = style === 'removed' ? C.faint : (areaDef?.colour ?? C.graphite);
 		if (style === 'removed') {
-			stroke = C.faint;
+			stroke = dropped ? C.dropped : C.faint;
 			dash = '5 4';
 			fill = C.surface;
+			if (dropped) sw = 1.75;
 		}
 		if (style !== 'removed' && e.lifecycle && profile.lifecycle[e.lifecycle]) {
 			const lc = profile.lifecycle[e.lifecycle];
@@ -841,7 +859,7 @@ export function measureFrame(n: SceneNode, scene: Scene, used: Used): FrameMeasu
 		if (style === 'removed') out.push(line(36, 19, 36 + titleW / 1.03, 19, { stroke: fg, 'stroke-width': 1.2 }));
 		let bx = 36 + titleW + 10;
 		if (badge) {
-			out.push(drawBadge(bx, 10, badge, style));
+			out.push(drawBadge(bx, 10, badge, dropped ? 'dropped' : style));
 			bx += badgeWidth(badge) + 6;
 		}
 		const tag = ctx.detailTags.get(e.id);

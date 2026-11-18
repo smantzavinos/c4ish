@@ -113,3 +113,54 @@ describe('text metrics', () => {
 		expect(lines[1].endsWith('…')).toBe(true);
 	});
 });
+
+describe('dropped items (revision: removed)', () => {
+	const model: Model = {
+		schemaVersion: 1,
+		title: 'Tiny',
+		views: [{ id: 'eng', kind: 'engineering', title: 'Tiny' }],
+		elements: [
+			{ id: 'app', kind: 'container', title: 'App', change: 'modified' },
+			{ id: 'svc', kind: 'component', parent: 'app', title: 'Service', change: 'new', pattern: 'api/mutation' },
+			{ id: 'old', kind: 'component', parent: 'app', title: 'Old service', change: 'new', pattern: 'api/mutation', revision: 'removed' },
+			{ id: 'tbl', kind: 'data', title: 'items', change: 'reused', pattern: 'data/table' }
+		],
+		relationships: [
+			{ id: 'w', from: 'svc', to: 'tbl', kind: 'writes', enforcement: 'platform', change: 'new' },
+			{ id: 'w2', from: 'old', to: 'tbl', kind: 'writes', enforcement: 'platform', change: 'new', revision: 'removed' }
+		]
+	};
+	const render = async (m: Model) => {
+		const res = check(m);
+		expect(res.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+		return (await renderView(res.model!, res.profile!, { view: 'eng' })).svg;
+	};
+	const node = (svg: string, id: string) => svg.slice(svg.indexOf(`data-id="${id}"`)).split('data-id="')[1];
+
+	it('draws a dropped card dashed in the dropped colour, with its badge, not the change badge', async () => {
+		const old = node(await render(model), 'old');
+		expect(old).toContain('>DROPPED<');
+		expect(old).not.toContain('>NEW<');
+		expect(old).toMatch(/stroke="#dc2626"[^>]*stroke-dasharray="6 4"/);
+		// the title is struck through: a line in the title colour right after the title text
+		expect(old).toMatch(/>Old service<\/text><line /);
+	});
+
+	it('draws a dropped connector dashed in the dropped colour and names both in the key', async () => {
+		const svg = await render(model);
+		// the connector itself: a dashed path in the dropped colour (cards are rects)
+		expect(svg).toMatch(/<path [^>]*stroke="#dc2626"[^>]*stroke-dasharray=/);
+		expect(svg).toContain('dropped — only in the earlier version');
+		expect(svg).toContain('dropped connector — only in the earlier version');
+	});
+
+	it('leaves a model with nothing dropped as it was', async () => {
+		const plain = structuredClone(model);
+		plain.elements = plain.elements.filter((e) => !e.revision);
+		plain.relationships = plain.relationships!.filter((r) => !r.revision);
+		const svg = await render(plain);
+		expect(svg).not.toContain('#dc2626');
+		expect(svg).not.toContain('DROPPED');
+		expect(svg).not.toContain('dropped');
+	});
+});

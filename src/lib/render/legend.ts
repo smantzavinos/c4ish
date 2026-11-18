@@ -1,7 +1,7 @@
 import { measure, wrap } from '../text/measure.js';
 import type { EdgeStyle } from './edges.js';
 import { drawEdgeLine, Markers } from './edges.js';
-import { drawBadge, hatchFill, icon, numberDisc, padlock, shade, tint, warningGlyph, dashAttrs, type ChangeStyle, type DrawCtx } from './node.js';
+import { drawBadge, DROPPED_BADGE, hatchFill, icon, numberDisc, padlock, shade, tint, warningGlyph, dashAttrs, type ChangeStyle, type DrawCtx } from './node.js';
 import { C } from './theme.js';
 import { el, g, line, rect, text, translate } from './svg.js';
 
@@ -159,6 +159,14 @@ export function buildLegend({ ctx, edgeStyles, markers }: LegendInput): Legend {
 				swatchW: s === 'reused' ? 30 : Math.ceil((measure(badge, 9.5, 'b', 0.06) + 12) * 0.85),
 				filter: `change:${s}`
 			};
+		});
+	if (used.dropped)
+		changeItems.push({
+			id: 'revision:removed',
+			label: 'dropped — only in the earlier version',
+			swatch: g(drawBadge(0, 0, DROPPED_BADGE, 'dropped'), { transform: `${translate(0, 2)} scale(0.85)` }),
+			swatchW: Math.ceil((measure(DROPPED_BADGE, 9.5, 'b', 0.06) + 12) * 0.85),
+			filter: 'revision:removed'
 		});
 	if (changeItems.length) sections.push({ id: 'change', title: 'Change (badge + border)', items: changeItems });
 

@@ -2,7 +2,7 @@ import type { Relationship } from '../model/types.js';
 import { divergenceId } from '../model/validate.js';
 import type { Point, Rect } from '../layout/types.js';
 import { measure, truncate, wrap } from '../text/measure.js';
-import { changeStyle, dashAttrs, numberDisc, warningGlyph, type DrawCtx } from './node.js';
+import { changeStyle, dashAttrs, isDropped, numberDisc, warningGlyph, type DrawCtx } from './node.js';
 import type { Scene } from './scene.js';
 import { C, T } from './theme.js';
 import { el, fmt, g, line, rect, text } from './svg.js';
@@ -26,7 +26,8 @@ export function edgeStyle(r: Relationship, scene: Scene): EdgeStyle {
 	const cat = kind?.category ?? 'runtime';
 	const arrow = kind?.arrow ?? 'filled';
 	const cs = changeStyle(profile, r.change);
-	const removed = cs === 'removed' || r.delta === 'removed';
+	const dropped = isDropped(r);
+	const removed = cs === 'removed' || r.delta === 'removed' || dropped;
 	let s: EdgeStyle;
 	if (cat === 'data') {
 		const enf = r.enforcement ? profile.enforcement[r.enforcement] : undefined;
@@ -46,6 +47,7 @@ export function edgeStyle(r: Relationship, scene: Scene): EdgeStyle {
 	}
 	if (removed) {
 		s = { ...s, stroke: C.faint, width: 1.25, line: 'dashed', strike: true, key: r.delta === 'removed' ? 'delta:removed' : 'removed', keyLabel: r.delta === 'removed' ? 'removed in this scenario' : 'removed connector', keyOrder: 40 };
+		if (dropped) s = { ...s, stroke: C.dropped, width: 1.6, opacity: 1, key: 'revision:removed', keyLabel: 'dropped connector — only in the earlier version', keyOrder: 41 };
 	} else if (r.delta === 'added') {
 		s = { ...s, width: s.width + 1.25 };
 	} else if (cs === 'reused' && !(cat === 'data' && r.enforcement && profile.enforcement[r.enforcement]?.line === 'dotted') && !r.divergence) {
@@ -68,9 +70,9 @@ const LABEL_LINE = 13;
 
 export function measureEdgeLabel(r: Relationship, contractTag: string | undefined): EdgeLabel | undefined {
 	const dv = divergenceId(r.divergence);
-	if (!r.label && !contractTag && !dv && !r.delta) return undefined;
+	if (!r.label && !contractTag && !dv && !r.delta && !isDropped(r)) return undefined;
 	const lines = r.label ? wrap(r.label, LABEL_MAX, T.edgeLabel, 'm', 2) : [];
-	const prefix = r.delta === 'added' ? '+' : r.delta === 'removed' ? '−' : undefined;
+	const prefix = r.delta === 'added' ? '+' : r.delta === 'removed' || isDropped(r) ? '−' : undefined;
 	let extra = 0;
 	if (prefix) extra += 16;
 	if (dv) extra += 16 + measure(dv, 10, 'b');
@@ -160,7 +162,7 @@ export function drawEdgeLabel(box: Rect, lbl: EdgeLabel, s: EdgeStyle, ctx: Draw
 	let x = box.x + 5;
 	const midY = box.y + box.height / 2;
 	if (lbl.prefix) {
-		const fill = lbl.prefix === '+' ? C.ink : C.faint;
+		const fill = lbl.prefix === '+' ? C.ink : s.key === 'revision:removed' ? C.dropped : C.faint;
 		out.push(el('circle', { cx: x + 6, cy: midY, r: 6, fill }));
 		out.push(text(x + 6, midY + 3.8, lbl.prefix, { size: 11, weight: 700, fill: C.white, anchor: 'middle' }));
 		x += 16;
@@ -172,7 +174,7 @@ export function drawEdgeLabel(box: Rect, lbl: EdgeLabel, s: EdgeStyle, ctx: Draw
 		x += 16 + measure(lbl.divergence, 10, 'b');
 	}
 	const top = box.y + 3 + LABEL_LINE - 3;
-	const fg = s.strike ? C.faint : C.graphite;
+	const fg = s.key === 'revision:removed' ? C.dropped : s.strike ? C.faint : C.graphite;
 	lbl.lines.forEach((l, i) => {
 		const by = top + i * LABEL_LINE;
 		out.push(text(x, by, l, { size: T.edgeLabel, weight: 500, fill: fg }));

@@ -114,7 +114,8 @@ export const ASPECTS: Record<ItemKind | Exclude<MemberKind, 'clause'>, PropertyT
 		implementedBy: S,
 		mappingLabel: T,
 		code: C,
-		views: P
+		views: P,
+		revision: P
 	},
 	field: { title: T, type: S, change: S, note: T },
 	index: { fields: S, change: S },
@@ -133,7 +134,8 @@ export const ASPECTS: Record<ItemKind | Exclude<MemberKind, 'clause'>, PropertyT
 		delta: S,
 		fromField: S,
 		toField: S,
-		views: P
+		views: P,
+		revision: P
 	},
 	contract: { title: T, change: S, clauses: { of: 'clause', key: () => '' } },
 	note: { on: S, kind: S, title: T, text: T, views: P },

@@ -12,7 +12,9 @@ export const C = {
 	white: '#ffffff',
 	modifiedBand: '#e2e8f0',
 	runtime: '#64748b',
-	missing: '#c026d3'
+	missing: '#c026d3',
+	/** An item that only the earlier version of the model had. */
+	dropped: '#dc2626'
 } as const;
 
 export const T = {

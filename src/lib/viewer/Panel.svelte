@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Diagram } from '../render/diagram.js';
-	import { changeStyle } from '../render/node.js';
+	import { changeStyle, isDropped } from '../render/node.js';
 
 	let { diagram, id, onselect }: { diagram: Diagram; id: string; onselect: (id: string | undefined) => void } = $props();
 
@@ -29,6 +29,7 @@
 	{#if node?.el}
 		{@const e = node.el}
 		<p class="kind">{profile.elementKinds[e.kind]?.label ?? e.kind} · <span class="change {changeStyle(profile, e.change)}">{changeLabel(e.change)}</span></p>
+		{#if isDropped(e)}<p class="dropped">Dropped: only the earlier version has this.</p>{/if}
 		<h2>{e.title}</h2>
 		{#if e.subtitle}<p class="sub">{e.subtitle}</p>{/if}
 
@@ -99,6 +100,7 @@
 		{@const kind = profile.relationshipKinds[r.kind]}
 		{@const enf = r.enforcement ? profile.enforcement[r.enforcement] : undefined}
 		<p class="kind">{kind?.label ?? r.kind} · <span class="change {changeStyle(profile, r.change)}">{changeLabel(r.change)}</span></p>
+		{#if isDropped(r)}<p class="dropped">Dropped: only the earlier version has this.</p>{/if}
 		<h2>{r.label ?? `${title(r.from)} → ${title(r.to)}`}</h2>
 		<p class="route">
 			<button class="link" onclick={() => onselect(r.from)}>{title(r.from)}</button> →
@@ -227,6 +229,10 @@
 	}
 	.change.removed {
 		text-decoration: line-through;
+	}
+	.dropped {
+		color: #dc2626;
+		font-weight: 600;
 	}
 	table {
 		border-collapse: collapse;
