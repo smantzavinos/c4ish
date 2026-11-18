@@ -53,6 +53,16 @@ Next: pins and the sidecar layout file (via the `override` hook); a TALA adapter
 
 Next: authoring help (write a step from the current viewer state), timing a cold reviewer through a tour.
 
+## Code references (2026-11-17)
+
+Done: `code` on elements and parts (schema v1); `c4ish code` resolves names in TypeScript, TSX and JavaScript and compares with a base commit (DECISIONS 33–41).
+
+Not yet:
+- other languages (Svelte, Python and others take whole-file references for now);
+- "built from" across files, through imports;
+- a code reference on a profile pattern, for its reference implementation;
+- which element kinds are expected to carry a reference (a profile setting and a lint).
+
 ## Risks
 - **Layout and routing quality.** TALA handles hierarchical placement but ignores preset waypoints; strict containment and stable routes after manual moves aren't guaranteed by any tested open-source option. The fallback: recompute only the routes a move affects, and accept engine routes otherwise. A commercial router is an option, but only after it passes the same tests.
 - **TALA availability and build.** Confirm licensing and a reproducible Nix build early (M3 spike before M4 work depends on it).

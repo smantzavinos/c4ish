@@ -1,6 +1,6 @@
 {
 	"$schema": "../../schema/model.schema.json",
-	"schemaVersion": 0,
+	"schemaVersion": 1,
 	"id": "paged-reads",
 	"title": "Stock items: bounded paged reads",
 	"summary": "Replace the all-items collector with independent, bounded, authorised reads and a sealed page cursor.",
@@ -95,6 +95,7 @@
 		},
 		{
 			"id": "page",
+			"code": ["examples/paged-reads/code/items.ts#page"],
 			"kind": "component",
 			"parent": "api",
 			"title": "items.page",
@@ -105,6 +106,7 @@
 		},
 		{
 			"id": "summary",
+			"code": ["examples/paged-reads/code/items.ts#summary"],
 			"kind": "component",
 			"parent": "api",
 			"title": "items.summary",
@@ -173,6 +175,7 @@
 		},
 		{
 			"id": "seal",
+			"code": ["examples/paged-reads/code/cursor.ts#seal", "examples/paged-reads/code/cursor.ts#open"],
 			"kind": "component",
 			"parent": "api",
 			"title": "Sealed page cursor",
@@ -206,6 +209,7 @@
 		},
 		{
 			"id": "items",
+			"code": ["examples/paged-reads/code/schema.ts#tables.stockItems"],
 			"kind": "data",
 			"parent": "db",
 			"title": "stockItems",
@@ -272,6 +276,7 @@
 		},
 		{
 			"id": "placements",
+			"code": ["examples/paged-reads/code/schema.ts#tables.binPlacements"],
 			"kind": "data",
 			"parent": "db",
 			"title": "binPlacements",

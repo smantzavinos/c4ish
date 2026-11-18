@@ -24,6 +24,7 @@ A reviewer should be able to look at one diagram and say "yes, I understand what
 | Renderer | Svelte components and a standalone SVG export |
 | Viewer | A small offline SvelteKit app: open a model, review it, adjust the layout, export |
 | CLI | `validate`, `lint`, `render` for agents and CI |
+| Code references | An element names the code it stands for; `c4ish code` resolves the names by parsing and reports what changed since a commit |
 
 Editing the model itself in the viewer comes later.
 
@@ -50,6 +51,7 @@ pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
 pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.svg.appendix.md (details, contracts, notes)
 pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg (+png), index.html, tour.md
 pnpm c4ish view <model> --tour  # local viewer with this model, in tour mode; live-reloads on save (--step id, --port n, --no-open)
+pnpm c4ish code <model> --base <commit>   # resolve the model's code references; what changed in each since <commit> (--json)
 pnpm dev               # demo page with the example diagrams; /viewer is the interactive viewer
 pnpm build             # static site in build/ (open build/viewer/index.html via any static server; works offline)
 pnpm check && pnpm test
@@ -76,5 +78,7 @@ Nix provides only the toolchain (Node 22, pnpm, Git); pnpm manages JS dependenci
 nix develop
 nix build              # the package; it also runs the installed CLI from outside the source tree
 ```
+
+Named code references are resolved with tree-sitter. The grammars are prebuilt `.wasm` files from the `tree-sitter-*` dev dependencies; `pnpm build` copies them to `grammars/`, which the package ships.
 
 After `pnpm-lock.yaml` changes, update the dependency hash in `nix/package.nix`: set it to `lib.fakeHash`, run `nix build`, and copy the hash it reports.

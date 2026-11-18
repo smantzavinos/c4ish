@@ -1,6 +1,6 @@
 {
 	"$schema": "../../schema/model.schema.json",
-	"schemaVersion": 0,
+	"schemaVersion": 1,
 	"id": "versioned-wiring",
 	"title": "Event contracts: version-pinned wiring",
 	"summary": "Services pin the exact event-contract version they provide or require; the wiring page shows and edits those pins.",

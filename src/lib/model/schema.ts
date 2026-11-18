@@ -47,7 +47,7 @@ export const modelSchema = {
 	additionalProperties: false,
 	properties: {
 		$schema: text,
-		schemaVersion: { const: 0 },
+		schemaVersion: { const: 1 },
 		id: text,
 		title: text,
 		summary: text,
@@ -135,13 +135,13 @@ export const modelSchema = {
 							type: 'object',
 							required: ['title'],
 							additionalProperties: false,
-							properties: { title: text, pattern: { anyOf: [text, { type: 'null' }] }, change: text }
+							properties: { title: text, pattern: { anyOf: [text, { type: 'null' }] }, change: text, code: { type: 'array', items: text } }
 						}
 					},
 					divergence,
 					implementedBy: { type: 'array', items: id },
 					mappingLabel: text,
-					sources: { type: 'array', items: text },
+					code: { type: 'array', items: text },
 					views: { type: 'array', items: id }
 				}
 			}

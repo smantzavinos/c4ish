@@ -16,6 +16,7 @@ Usage:
   c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
   c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
+  c4ish code     <model.json> [--profile p.json] [--base commit] [--root dir] [--json]
   c4ish guide
   c4ish schema   [model | profile]
   c4ish --version
@@ -28,6 +29,11 @@ tour      Writes one SVG per tour step plus index.html (offline slideshow) and t
 view      Serves the offline viewer on localhost with this model (and profile) loaded, opens the
           browser and live-reloads when either file changes. --tour starts the (named or first)
           tour, --step at that step. Uses the prebuilt viewer (build/; built once if missing).
+code      Finds the code each element's "code" references name (path, path#Name, path#Outer.Inner),
+          relative to --root (default: the git repository holding the model). With --base it also
+          resolves them at that commit, says what changed in each, and lists every changed line with
+          the references that contain it. --json prints the full report. Exit 1 when a reference
+          cannot be used as written.
 guide     Prints the authoring reference: how to write a model, with one complete example.
 schema    Prints the JSON Schema of a model (default) or a profile.
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
@@ -47,7 +53,7 @@ function parse(argv: string[]): Args {
 			const key = a.slice(2);
 			const next = argv[i + 1];
 			// --tour may stand alone (view: start the first tour)
-			const takes = ['profile', 'view', 'out', 'density', 'step', 'port'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
+			const takes = ['profile', 'view', 'out', 'density', 'step', 'port', 'base', 'root'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
 			if (takes && next !== undefined) {
 				flags.set(key, next);
 				i++;
@@ -133,6 +139,7 @@ async function main(argv: string[]): Promise<number> {
 		return errors || (flags.has('strict') && warns) ? 1 : 0;
 	}
 	if (cmd === 'tour') return writeTours(file, result, flags);
+	if (cmd === 'code') return code(file, result, flags);
 	if (cmd === 'view') return view(file, flags, errors, warns);
 	if (cmd !== 'render') {
 		console.error(`unknown command "${cmd}"\n\n${USAGE}`);
@@ -203,6 +210,54 @@ async function view(file: string, flags: Map<string, string | true>, errors: num
 		process.once('SIGINT', stop);
 		process.once('SIGTERM', stop);
 	});
+}
+
+async function code(file: string, result: ReturnType<typeof check>, flags: Map<string, string | true>): Promise<number> {
+	if (!result.ok || !result.model || !result.profile) {
+		console.error(`${file}: code references not resolved (errors)`);
+		return 1;
+	}
+	// Loaded here so the other commands never start the parser.
+	const { codeReport, repositoryRoot } = await import('../code/report.js');
+	const str = (k: string) => (typeof flags.get(k) === 'string' ? (flags.get(k) as string) : undefined);
+	const root = str('root') ? resolve(str('root')!) : repositoryRoot(dirname(resolve(file)));
+	if (!root) {
+		console.error(`${file} is not inside a git repository; pass --root <dir>`);
+		return 1;
+	}
+	const report = await codeReport(result.model, result.profile, { root, base: str('base') });
+	if (flags.has('json')) {
+		process.stdout.write(JSON.stringify(report, null, '\t') + '\n');
+		return report.problems ? 1 : 0;
+	}
+	const span = (side?: { extents?: { start: number; end: number }[] }) => (side?.extents ?? []).map((e) => `L${e.start}–${e.end}`).join(', ');
+	console.log(`${report.references.length} code reference(s) in ${root}${report.base ? `, ${report.base.slice(0, 10)} → working tree` : ''}`);
+	for (const r of report.references) {
+		const state = r.problem ? 'PROBLEM' : (r.delta ?? r.head.status);
+		const where = span(r.head.status === 'resolved' ? r.head : r.base);
+		const who = r.owners.map((o) => (o.part ? `${o.element} / ${o.part}` : o.element)).join(', ');
+		console.log(`  ${state.padEnd(10)} ${r.ref}${where ? `  ${where}` : ''}  [${who}]`);
+		const more = [
+			r.problem,
+			r.commentChanged ? 'the comment above it changed' : '',
+			r.changedThrough ? `changed through ${r.changedThrough.join(', ')}` : '',
+			...(r.hints ?? []).map((h) => `${h.kind} to ${h.ref}?`)
+		].filter(Boolean);
+		for (const m of more) console.log(`             ${m}`);
+	}
+	if (report.files && report.unowned) {
+		const u = report.unowned;
+		console.log(`${report.files.length} changed file(s); ${u.lines} changed line(s) inside no reference (${u.ranges} range(s) in ${u.files} file(s))`);
+		const listed = report.files.flatMap((f) => {
+			const loose = [...f.head.filter((x) => !x.refs.length).map((x) => `+${x.start}–${x.end}`), ...f.base.filter((x) => !x.refs.length).map((x) => `-${x.start}–${x.end}`)];
+			return loose.length || f.binary ? [`  ${f.path} (${f.status}${f.binary ? ', binary' : ''})  ${loose.join(' ')}`] : [];
+		});
+		const LIMIT = 40;
+		listed.slice(0, LIMIT).forEach((l) => console.log(l));
+		if (listed.length > LIMIT) console.log(`  … and ${listed.length - LIMIT} more file(s); --json lists them all`);
+	}
+	if (report.problems) console.error(`${file}: ${report.problems} code reference(s) cannot be used as written`);
+	return report.problems ? 1 : 0;
 }
 
 function toPng(svgFile: string, flags: Map<string, string | true>): void {

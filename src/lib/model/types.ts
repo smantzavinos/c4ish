@@ -9,7 +9,7 @@
 /* ------------------------------------------------------------------ */
 
 export interface Model {
-	schemaVersion: 0;
+	schemaVersion: 1;
 	/** Short slug for the change. */
 	id?: string;
 	title: string;
@@ -137,7 +137,11 @@ export interface Element {
 	implementedBy?: string[];
 	/** Short text for the mapping footer (otherwise derived from implementedBy titles). */
 	mappingLabel?: string;
-	sources?: string[];
+	/**
+	 * Where the element lives in the repository: `path`, `path#Name` or `path#Outer.Inner`, relative
+	 * to the repository root. Several when it spans definitions or files. Not rendered.
+	 */
+	code?: string[];
 	/** Restrict this element to these view ids. */
 	views?: string[];
 }
@@ -171,6 +175,8 @@ export interface Part {
 	title: string;
 	pattern?: string | null;
 	change?: string;
+	/** Where this part lives in the repository (see `Element.code`). */
+	code?: string[];
 }
 
 export type Divergence = string | { id: string; text?: string };

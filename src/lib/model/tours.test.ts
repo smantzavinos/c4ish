@@ -5,7 +5,7 @@ import { tourCoverage, toursCoverage, validateTours } from './tours.js';
 import type { Model, Profile, TourStep } from './types.js';
 
 const base: Model = {
-	schemaVersion: 0,
+	schemaVersion: 1,
 	title: 'Tiny',
 	views: [{ id: 'eng', kind: 'engineering', title: 'Tiny' }],
 	elements: [

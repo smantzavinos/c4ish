@@ -9,6 +9,7 @@ c4ish validate plan.c4ish.json --strict   # schema, references, notation lint, t
 c4ish view plan.c4ish.json --tour         # local viewer, reloads on save
 c4ish tour plan.c4ish.json                # static review pages in ./tour/ (add --png for rasters)
 c4ish render plan.c4ish.json --all        # one SVG per view
+c4ish code plan.c4ish.json                # does every code reference resolve?
 ```
 
 Write the model, run `validate --strict` until it prints `0 error(s), 0 warning(s)`, then look at the tour yourself before handing it to a reviewer. `validate` checks that the model is well formed. It cannot tell whether the design is right or whether something was left out.
@@ -19,7 +20,7 @@ A model describes **one planned change** and the unchanged context it touches. I
 
 | Key | Holds |
 |---|---|
-| `schemaVersion` | `0` |
+| `schemaVersion` | `1` |
 | `title`, `id`, `summary` | What the change is |
 | `profile` | Relative path to the project profile. Omit to use the built-in default |
 | `views` | The pictures: usually `engineering`, plus `product` when users see a difference |
@@ -46,6 +47,37 @@ A model describes **one planned change** and the unchanged context it touches. I
 - **Data elements** can list `fields` and `indexes`, each with its own `change`. A `tie` joins two fields that must agree.
 - **Libraries** are elements of kind `library`. A component names the ones it uses in `libraries`.
 - **Product concepts** name the elements that implement them in `implementedBy`.
+- **`code`** lists where the element lives in the repository (see Code references).
+
+## Code references
+
+`code` on an element, or on one of its `parts`, lists where it lives in the repository. Nothing is drawn from it; `c4ish code` checks it against the files.
+
+| Form | Names |
+|---|---|
+| `src/notes/list.ts` | A whole file, of any type |
+| `src/notes/list.ts#listNotes` | A top-level definition: a function, class, `const`, type, interface, enum or namespace |
+| `src/schema.ts#tables.notes` | A definition inside another: an object property, a class member, an enum member |
+| `src/schema.ts#default` | An `export default` with no name |
+
+- **Paths** are relative to the repository root.
+- **A name is the full chain** of named definitions around it, outermost first. Unnamed wrappers, such as a call's arguments, are skipped. When a short name doesn't resolve, `c4ish code` suggests the full one.
+- **Several references** go on an element that spans several definitions or files.
+- **Names resolve in TypeScript and JavaScript** (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`). Any other file takes a whole-file reference.
+- **One name declared several times in one place** (overloads, a `const` and a `type`) is one definition. The same name in two different places is ambiguous: qualify it.
+- **A whole-file reference** stands for whatever the named references into that file don't cover.
+
+```bash
+c4ish code plan.c4ish.json                    # every reference resolves in the working tree
+c4ish code plan.c4ish.json --base <commit>    # what changed in each since that commit (--json for the full report)
+```
+
+With `--base`, each reference is `added`, `removed`, `modified` or `unchanged`:
+- The definition's text is compared, so one that only moved within its file is unchanged.
+- The comment lines directly above a definition are outside it. A change there is reported as a changed comment.
+- `changed through` names a changed top-level definition in the same file that this one is built from.
+- A definition that was renamed or moved stops resolving, with a hint to where it went. Correct the reference.
+- Every changed line is listed with the references that contain it, so lines inside no reference stand out.
 
 ## Patterns
 
@@ -117,7 +149,7 @@ A complete model on the default profile. It validates with no warnings.
 
 ```json
 {
-  "schemaVersion": 0,
+  "schemaVersion": 1,
   "id": "order-notes",
   "title": "Order notes",
   "views": [
@@ -201,4 +233,5 @@ A complete model on the default profile. It validates with no warnings.
 - **A tour that lights changes only with `highlight`**. Coverage then lists them as uncovered.
 - **A removed element that still has live connectors.** Mark those connectors removed too.
 - **Titles that carry the explanation.** Keep the title a name; put the explanation in `subtitle`, `details` or a note.
+- **A code reference by short name.** `schema.ts#notes` doesn't find a property of `tables`; write `schema.ts#tables.notes`.
 - **Too much context.** Reused elements that nothing changed touches make the diagram slower to read.

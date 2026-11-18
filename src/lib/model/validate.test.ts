@@ -8,7 +8,7 @@ import type { Model } from './types.js';
 import { validateModel, validateProfileSchema } from './validate.js';
 
 const base: Model = {
-	schemaVersion: 0,
+	schemaVersion: 1,
 	title: 'Tiny',
 	views: [{ id: 'eng', kind: 'engineering', title: 'Tiny' }],
 	elements: [
@@ -48,7 +48,7 @@ describe('schema', () => {
 	});
 	it('rejects a wrong schemaVersion and missing title', () => {
 		const m = clone(base) as unknown as Record<string, unknown>;
-		m.schemaVersion = 1;
+		m.schemaVersion = 0;
 		delete m.title;
 		const res = check(m);
 		expect(res.ok).toBe(false);
@@ -124,7 +124,7 @@ describe('lint', () => {
 	});
 	it('warns on sibling chains in views that forbid them', () => {
 		const m: Model = {
-			schemaVersion: 0,
+			schemaVersion: 1,
 			title: 'Chain',
 			views: [{ id: 'p', kind: 'product', title: 'Chain' }],
 			elements: [
@@ -147,5 +147,25 @@ describe('lint', () => {
 		delete m.relationships![0].enforcement;
 		const profile = resolveProfile({ profileVersion: 0, id: 'strict', title: 'Strict', extends: 'default', rules: { missingEnforcement: 'error' } });
 		expect(validateModel(m, profile).some((d) => d.code === 'missing-enforcement' && d.severity === 'error')).toBe(true);
+	});
+});
+
+describe('code references', () => {
+	it('accepts a file, a name and a nested name on an element and on a part', () => {
+		const m = clone(base);
+		m.elements[1].code = ['src/svc.ts#save', 'src/svc.ts#Service.save', 'src/svc.json'];
+		m.elements[1].parts = [{ title: 'guard', code: ['src/guard.ts#check'] }];
+		expect(codes(m)).toEqual([]);
+	});
+	it('rejects text that is not a reference, and a repeated one', () => {
+		const m = clone(base);
+		m.elements[1].code = ['/abs/svc.ts', 'src/svc.ts#', 'src/a.ts', 'src/a.ts'];
+		m.elements[1].parts = [{ title: 'guard', code: ['../guard.ts'] }];
+		expect(codes(m)).toEqual(['invalid-code-ref', 'invalid-code-ref', 'invalid-code-ref', 'invalid-code-ref']);
+	});
+	it('no longer accepts the old `sources` field', () => {
+		const m = clone(base);
+		(m.elements[1] as unknown as Record<string, unknown>).sources = ['src/svc.ts'];
+		expect(codes(m)).toEqual(['model-schema']);
 	});
 });

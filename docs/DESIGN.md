@@ -66,6 +66,14 @@ Profiles can define lifecycle states (for example draft and released) with their
 - A **proposed** pattern is marked distinctly: it is the thing a reviewer must look at.
 - A **divergence** (code that doesn't follow its declared pattern, or an implementation that differs from intent) carries a marker on the element or edge that is wrong, not in a footnote.
 
+### Code references
+An element, or one of its parts, can name the code it stands for: `code: ["path", "path#Name", "path#Outer.Inner"]`. This ties a model to code; it does not derive one from the other.
+- A reference is a **name**, found by parsing the file (tree-sitter). No line numbers or syntax-tree nodes are stored, so a reference survives edits around it.
+- `c4ish code` resolves every reference in the working tree and, given a base commit, at that commit. It reports what happened to each, and which references contain each changed line.
+- The report states facts. What a difference means (is this element allowed to change?) belongs to whoever calls it.
+
+The rules are in DECISIONS 33–41.
+
 ### Absence
 Something deliberately missing is stated: a grey italic caption where it would be. A reader should never have to notice a missing arrow.
 
@@ -105,19 +113,20 @@ A **tour** is an authored walkthrough of the change for review. Each step is a v
 
 ## 5. JSON contract
 
-**Schema v0 is now normative:** `src/lib/model/types.ts` (TypeScript), `src/lib/model/schema.ts` → `schema/model.schema.json` and `schema/profile.schema.json`. The examples in `examples/` are the reference. Main differences from the original sketch below:
+**Schema v1 is normative:** `src/lib/model/types.ts` (TypeScript), `src/lib/model/schema.ts` → `schema/model.schema.json` and `schema/profile.schema.json`. The examples in `examples/` are the reference. Main differences from the original sketch below:
 - `name` is split into `title` / `subtitle` / `details`;
 - `type`/`variation` became one `pattern` id. `null` means deliberately no pattern; `patternFit: "partial"` and `parts[]` handle mixed fits. Unapproved patterns go in `proposedPatterns`;
 - other additions: `fields[]`, `indexes[]`, `ties[]` (with enforcement and `divergence`), `libraries[]` (ids of `library` elements), `lifecycle`, `area`, `implementedBy` + `mappingLabel`;
 - relationships gain `delta` (an illustrative scenario +/−, independent of change state), `contract` and `fromField`/`toField`;
 - contracts are named `clauses`; notes have `kind` (`focus|risk|note|question`); `absences[]` are stated gaps;
+- `code[]` on elements and parts (schema v1; it replaces `sources[]`);
 - views have `focus[]`, `include`/`exclude` (subtrees), `omitRelationships`, `direction` and `fields` (`all|changed|none`).
 
 ### Original sketch (historical)
 
 ```json
 {
-  "schemaVersion": 0,
+  "schemaVersion": 1,
   "profile": "./profile.json",
   "title": "Lead inbox",
   "views": [

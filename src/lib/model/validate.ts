@@ -3,6 +3,7 @@ import { validateTours } from './tours.js';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Divergence, Element, Model, Profile, Severity, View } from './types.js';
 import { modelSchema, profileSchema } from './schema.js';
+import { parseCodeRef } from '../code/reference.js';
 
 export interface Diagnostic {
 	severity: 'error' | 'warning';
@@ -105,6 +106,13 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 	const checkPattern = (value: string | null | undefined, at: string) => {
 		if (value && !patternIds.has(value)) err('unknown-pattern', `pattern "${value}" is neither in the profile catalog nor in proposedPatterns`, at);
 	};
+	const checkCode = (refs: string[] | undefined, at: string) => {
+		for (const raw of refs ?? []) {
+			const ref = parseCodeRef(raw);
+			if ('error' in ref) err('invalid-code-ref', `code reference "${raw}" ${ref.error} (write path, path#Name or path#Outer.Inner)`, at);
+		}
+		if (new Set(refs).size !== (refs ?? []).length) err('invalid-code-ref', `the same code reference is listed twice`, at);
+	};
 	const checkViews = (views: string[] | undefined, at: string) => {
 		for (const v of views ?? []) if (!viewIds.has(v)) err('unknown-view', `view "${v}" does not exist`, at);
 	};
@@ -145,7 +153,9 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 		for (const p of e.parts ?? []) {
 			checkPattern(p.pattern, e.id);
 			checkChange(p.change, e.id);
+			checkCode(p.code, e.id);
 		}
+		checkCode(e.code, e.id);
 		for (const ref of e.implementedBy ?? []) if (!elements.has(ref)) err('unknown-ref', `implementedBy "${ref}" does not exist`, e.id);
 		checkViews(e.views, e.id);
 		if (e.change === undefined && kind?.role !== 'library')

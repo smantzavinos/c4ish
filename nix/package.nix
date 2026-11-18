@@ -29,7 +29,7 @@ stdenv.mkDerivation (finalAttrs: {
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
     fetcherVersion = 4;
-    hash = "sha256-ia41YJaOxGpLkVYO61DIC/19EsUZc5ocTCRJ3uPTomw=";
+    hash = "sha256-Phkgumm165yHw4+tfdMo360hC87D/A+L1eFwlPM1Mw0=";
   };
 
   nativeBuildInputs = [
@@ -54,7 +54,7 @@ stdenv.mkDerivation (finalAttrs: {
     CI=true pnpm install --offline --prod --frozen-lockfile --ignore-scripts
 
     mkdir -p $out/lib/c4ish $out/bin
-    cp -r package.json dist build schema node_modules $out/lib/c4ish/
+    cp -r package.json dist build schema grammars node_modules $out/lib/c4ish/
     install -Dm644 docs/AUTHORING.md $out/lib/c4ish/docs/AUTHORING.md
 
     # ImageMagick is only used by --png; a `magick` already on PATH wins.
@@ -75,6 +75,9 @@ stdenv.mkDerivation (finalAttrs: {
     $out/bin/c4ish --version | grep -q "^c4ish ${finalAttrs.version} "
     $out/bin/c4ish guide | grep -q '"schemaVersion"'
     $out/bin/c4ish schema profile | grep -q profileVersion
+    # Named code references need the shipped grammars.
+    root=$PWD
+    (cd "$TMPDIR" && $out/bin/c4ish code "$model" --root "$root" | grep -q 'resolved .*schema.ts#tables.stockItems  L10')
     runHook postInstallCheck
   '';
 

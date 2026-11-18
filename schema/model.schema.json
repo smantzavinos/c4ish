@@ -15,7 +15,7 @@
 			"type": "string"
 		},
 		"schemaVersion": {
-			"const": 0
+			"const": 1
 		},
 		"id": {
 			"type": "string"
@@ -315,6 +315,12 @@
 								},
 								"change": {
 									"type": "string"
+								},
+								"code": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
 								}
 							}
 						}
@@ -351,7 +357,7 @@
 					"mappingLabel": {
 						"type": "string"
 					},
-					"sources": {
+					"code": {
 						"type": "array",
 						"items": {
 							"type": "string"

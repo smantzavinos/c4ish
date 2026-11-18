@@ -8,6 +8,7 @@ node_modules
 /.svelte-kit
 /build
 /dist
+/grammars
 
 # direnv
 .direnv/
@@ -34,3 +35,4 @@ vite.config.ts.timestamp-*
 
 # Generated rasters are never committed (SVG/html/md are)
 *.png
+/result

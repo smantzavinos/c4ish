@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+  # Only the prebuilt .wasm grammars are used; the native bindings are never built.
+  tree-sitter-javascript: false
+  tree-sitter-typescript: false
