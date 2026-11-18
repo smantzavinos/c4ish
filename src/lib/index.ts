@@ -18,3 +18,5 @@ export { renderAppendix } from './render/page.js';
 export * from './viewer/state.js';
 export { validateTours, tourCoverage, toursCoverage, stepCovers, stepLit, type TourCoverage, type CoverageItem } from './model/tours.js';
 export { exportTour, type TourExport } from './render/tour-export.js';
+export { diffModels, filterDiff, describeField, ASPECT_NAMES, type Aspect, type Difference, type FieldDifference, type ModelDiff, type ItemKind, type DeltaKind } from './model/diff.js';
+export { differenceModel, DIFFERENCE_TOUR } from './model/diff-tour.js';

@@ -52,6 +52,7 @@ pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.
 pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg (+png), index.html, tour.md
 pnpm c4ish view <model> --tour  # local viewer with this model, in tour mode; live-reloads on save (--step id, --port n, --no-open)
 pnpm c4ish code <model> --base <commit>   # resolve the model's code references; what changed in each since <commit> (--json)
+pnpm c4ish diff <old> <new> --only structure   # what differs between two versions of a model, by id (--json; --base <commit>; --out review.json for a tour of the differences)
 pnpm dev               # demo page with the example diagrams; /viewer is the interactive viewer
 pnpm build             # static site in build/ (open build/viewer/index.html via any static server; works offline)
 pnpm check && pnpm test

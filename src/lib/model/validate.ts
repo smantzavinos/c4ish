@@ -4,6 +4,7 @@ import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Divergence, Element, Model, Profile, Severity, View } from './types.js';
 import { modelSchema, profileSchema } from './schema.js';
 import { parseCodeRef } from '../code/reference.js';
+import { partKey, tieKey } from './diff.js';
 
 export interface Diagnostic {
 	severity: 'error' | 'warning';
@@ -140,6 +141,14 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 			else if (profile.elementKinds[l.kind]?.role !== 'library') err('not-a-library', `"${lib}" is a ${l.kind}, not a library`, e.id);
 		}
 		const fieldIds = new Set((e.fields ?? []).map((f) => f.id));
+		// members are matched by name when two versions of a model are compared, so a name is used once
+		const once = (what: string, names: string[]) => {
+			for (const n of new Set(names.filter((x, i) => names.indexOf(x) !== i))) err('duplicate-id', `${what} "${n}" appears more than once in "${e.id}"`, e.id);
+		};
+		once('field', (e.fields ?? []).map((f) => f.id));
+		once('index', (e.indexes ?? []).map((i) => i.id));
+		once('tie', (e.ties ?? []).map(tieKey));
+		once('part', (e.parts ?? []).map(partKey));
 		for (const f of e.fields ?? []) checkChange(f.change, `${e.id}.${f.id}`);
 		for (const ix of e.indexes ?? []) {
 			checkChange(ix.change, `${e.id}#${ix.id}`);

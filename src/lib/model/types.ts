@@ -161,6 +161,7 @@ export interface Index {
 }
 
 export interface Tie {
+	/** Stable name for comparing versions of the model. Without it the pair of fields is the name. */
 	id?: string;
 	/** Two field ids of the same element that must agree. */
 	fields: [string, string];
@@ -172,6 +173,8 @@ export interface Tie {
 }
 
 export interface Part {
+	/** Stable name for comparing versions of the model. Without it the title is the name. */
+	id?: string;
 	title: string;
 	pattern?: string | null;
 	change?: string;

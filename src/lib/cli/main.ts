@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { check } from '../api.js';
-import type { Diagnostic } from '../model/validate.js';
+import { validateModelSchema, type Diagnostic } from '../model/validate.js';
+import { ASPECT_NAMES, describeField, diffModels, filterDiff, type Aspect } from '../model/diff.js';
+import { differenceModel } from '../model/diff-tour.js';
+import type { Model } from '../model/types.js';
 import { renderView } from '../render/page.js';
 import { exportTour } from '../render/tour-export.js';
 import { tourCoverage } from '../model/tours.js';
@@ -17,6 +20,8 @@ Usage:
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
   c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
   c4ish code     <model.json> [--profile p.json] [--base commit] [--root dir] [--json]
+  c4ish diff     <old.json> <new.json> [--only aspects] [--json] [--out review.json] [--profile p.json]
+  c4ish diff     <model.json> --base commit [--only aspects] [--json] [--out review.json] [--profile p.json]
   c4ish guide
   c4ish schema   [model | profile]
   c4ish --version
@@ -34,6 +39,13 @@ code      Finds the code each element's "code" references name (path, path#Name,
           resolves them at that commit, says what changed in each, and lists every changed line with
           the references that contain it. --json prints the full report. Exit 1 when a reference
           cannot be used as written.
+diff      Compares two versions of a model, item by item, matched by id. The earlier version is a
+          file, or with --base the same file at that commit. Every difference has an aspect:
+          structure, text, code, presentation or provenance; --only keeps the ones listed
+          (comma-separated). --json prints the full comparison. --out writes a review model: the
+          later version with one generated tour that walks what differs (open it with
+          "c4ish view <review.json> --tour", or export it with "c4ish tour"). Exit 1 only when a
+          version cannot be read.
 guide     Prints the authoring reference: how to write a model, with one complete example.
 schema    Prints the JSON Schema of a model (default) or a profile.
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
@@ -41,6 +53,8 @@ Profile:  --profile wins; else the model's "profile" path (relative to the model
 interface Args {
 	cmd?: string;
 	file?: string;
+	/** A second file (diff). */
+	other?: string;
 	flags: Map<string, string | true>;
 }
 
@@ -53,14 +67,14 @@ function parse(argv: string[]): Args {
 			const key = a.slice(2);
 			const next = argv[i + 1];
 			// --tour may stand alone (view: start the first tour)
-			const takes = ['profile', 'view', 'out', 'density', 'step', 'port', 'base', 'root'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
+			const takes = ['profile', 'view', 'out', 'density', 'step', 'port', 'base', 'root', 'only'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
 			if (takes && next !== undefined) {
 				flags.set(key, next);
 				i++;
 			} else flags.set(key, true);
 		} else pos.push(a);
 	}
-	return { cmd: pos[0], file: pos[1], flags };
+	return { cmd: pos[0], file: pos[1], other: pos[2], flags };
 }
 
 function readJson(path: string): unknown {
@@ -117,7 +131,7 @@ function info(cmd: string | undefined, arg: string | undefined, flags: Map<strin
 }
 
 async function main(argv: string[]): Promise<number> {
-	const { cmd, file, flags } = parse(argv);
+	const { cmd, file, other, flags } = parse(argv);
 	const done = info(cmd, file, flags);
 	if (done !== undefined) return done;
 	if (!cmd || flags.has('help') || cmd === 'help') {
@@ -128,6 +142,7 @@ async function main(argv: string[]): Promise<number> {
 		console.error(`missing <model.json>\n\n${USAGE}`);
 		return 1;
 	}
+	if (cmd === 'diff') return diff(file, other, flags);
 	const { modelJson, profileJson } = load(file, flags.get('profile'));
 	const result = check(modelJson, profileJson);
 	printDiagnostics(file, result.diagnostics);
@@ -258,6 +273,85 @@ async function code(file: string, result: ReturnType<typeof check>, flags: Map<s
 	}
 	if (report.problems) console.error(`${file}: ${report.problems} code reference(s) cannot be used as written`);
 	return report.problems ? 1 : 0;
+}
+
+/** The file as it was at a commit, parsed. */
+function readJsonAt(file: string, commit: string): unknown {
+	const dir = dirname(resolve(file));
+	const git = (args: string[]) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 1 << 28, stdio: ['ignore', 'pipe', 'pipe'] });
+	let path: string;
+	try {
+		// the directory's path inside the repository, as git sees it (symlinks resolved)
+		path = git(['rev-parse', '--show-prefix']).trim() + basename(file);
+	} catch {
+		throw new Error(`${file} is not inside a git repository; give the earlier version as a file`);
+	}
+	try {
+		return JSON.parse(git(['show', `${commit}:${path}`]));
+	} catch (e) {
+		const detail = (e as { stderr?: string }).stderr?.trim().split('\n')[0] ?? (e as Error).message;
+		throw new Error(`cannot read ${path} at ${commit}: ${detail}`);
+	}
+}
+
+function diff(first: string, second: string | undefined, flags: Map<string, string | true>): number {
+	const str = (k: string) => (typeof flags.get(k) === 'string' ? (flags.get(k) as string) : undefined);
+	const base = str('base');
+	if (!second && !base) {
+		console.error(`diff needs two files, or one file and --base <commit>\n\n${USAGE}`);
+		return 1;
+	}
+	if (second && base) {
+		console.error('diff takes two files or --base, not both');
+		return 1;
+	}
+	const newFile = second ?? first;
+	const oldName = base ? `${first} at ${base}` : first;
+	const only = str('only')?.split(',').map((a) => a.trim());
+	const unknown = only?.filter((a) => !ASPECT_NAMES.includes(a as Aspect));
+	if (unknown?.length) {
+		console.error(`unknown aspect "${unknown.join('", "')}" (${ASPECT_NAMES.join(', ')})`);
+		return 1;
+	}
+
+	const oldJson = base ? readJsonAt(first, base) : readJson(first);
+	const { modelJson, profileJson } = load(newFile, flags.get('profile'));
+	// the earlier version only has to be well formed: its profile may have moved on since
+	const oldErrors = validateModelSchema(oldJson);
+	printDiagnostics(oldName, oldErrors);
+	const wantsReview = str('out') !== undefined;
+	const checked = wantsReview ? check(modelJson, profileJson) : undefined;
+	const newErrors = (checked?.diagnostics ?? validateModelSchema(modelJson)).filter((d) => d.severity === 'error');
+	printDiagnostics(newFile, newErrors);
+	if (oldErrors.length || newErrors.length) {
+		console.error('not compared (errors)');
+		return 1;
+	}
+
+	const full = diffModels(oldJson as Model, modelJson as Model);
+	const result = only ? filterDiff(full, only as Aspect[]) : full;
+
+	if (wantsReview) {
+		const out = resolve(str('out')!);
+		const review = differenceModel(oldJson as Model, checked!.model!, checked!.profile!, result);
+		// the review model may sit elsewhere: keep its profile path pointing at the same file
+		if (typeof review.profile === 'string') review.profile = relative(dirname(out), resolve(dirname(newFile), review.profile));
+		mkdirSync(dirname(out), { recursive: true });
+		writeFileSync(out, JSON.stringify(review, null, '\t') + '\n');
+		console.error(`wrote ${out} (${review.tours![0].steps.length} step(s)); open with: c4ish view ${str('out')} --tour`);
+	}
+	if (flags.has('json')) {
+		process.stdout.write(JSON.stringify(result, null, '\t') + '\n');
+		return 0;
+	}
+	const total = Object.values(result.counts).reduce((a, b) => a + b, 0);
+	const counts = ASPECT_NAMES.filter((a) => result.counts[a]).map((a) => `${result.counts[a]} ${a}`);
+	console.log(`${oldName} → ${newFile}: ${total} difference(s)${counts.length ? ` (${counts.join(', ')})` : ''}${only ? `, ${only.join(' and ')} only` : ''}`);
+	for (const d of result.differences) {
+		console.log(`  ${d.change.padEnd(8)} ${d.kind} ${d.id}${d.fields ? '' : `  [${d.aspects[0]}]`}`);
+		for (const f of d.fields ?? []) console.log(`           ${f.aspect.padEnd(12)} ${describeField(f)}`);
+	}
+	return 0;
 }
 
 function toPng(svgFile: string, flags: Map<string, string | true>): void {

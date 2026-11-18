@@ -74,6 +74,14 @@ An element, or one of its parts, can name the code it stands for: `code: ["path"
 
 The rules are in DECISIONS 33–41.
 
+### Two versions of a model
+A model changes after it is reviewed. `c4ish diff` compares two versions item by item, matched by id, and says what was added, removed and changed.
+- Every difference has an **aspect**: structure, text, code, presentation or provenance. A reader who cares only whether the design changed keeps `structure`.
+- The comparison can be turned into a **review model**: the later version with one generated tour that walks only what differs.
+- As with code references, the comparison states facts. Which differences need someone's attention belongs to whoever calls it.
+
+The rules are in DECISIONS 42–47.
+
 ### Absence
 Something deliberately missing is stated: a grey italic caption where it would be. A reader should never have to notice a missing arrow.
 

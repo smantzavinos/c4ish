@@ -78,6 +78,8 @@ stdenv.mkDerivation (finalAttrs: {
     # Named code references need the shipped grammars.
     root=$PWD
     (cd "$TMPDIR" && $out/bin/c4ish code "$model" --root "$root" | grep -q 'resolved .*schema.ts#tables.stockItems  L10')
+    # A model equals itself, and a review model of the comparison still validates.
+    (cd "$TMPDIR" && $out/bin/c4ish diff "$model" "$model" --out "$TMPDIR/review.json" | grep -q ': 0 difference(s)' && $out/bin/c4ish validate "$TMPDIR/review.json")
     runHook postInstallCheck
   '';
 

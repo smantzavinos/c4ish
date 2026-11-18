@@ -45,6 +45,7 @@ A model describes **one planned change** and the unchanged context it touches. I
 - **`change`** is required on everything: `new`, `modified`, `reused` (unchanged context) or `removed`. Keep removed items in the model; they are drawn struck through.
 - **`title`** is at most 40 characters and **`subtitle`** at most 64. Longer text goes in `details`, which the viewer shows in the side panel.
 - **Data elements** can list `fields` and `indexes`, each with its own `change`. A `tie` joins two fields that must agree.
+- **`parts`** are grouped members with their own `pattern` and `change`. Give a part or a tie an `id` when its title or its fields may change later (see Comparing two versions).
 - **Libraries** are elements of kind `library`. A component names the ones it uses in `libraries`.
 - **Product concepts** name the elements that implement them in `implementedBy`.
 - **`code`** lists where the element lives in the repository (see Code references).
@@ -142,6 +143,31 @@ A tour is an ordered list of steps. Each step is a view plus what is lit, with a
 **Paths must be contiguous.** Each connector starts where the last one ended. Write an intended gap as `{ "jump": true, "text": "later" }`.
 
 A good order: what changes for the user, the main flows as paths, the patterns in use, proposed patterns, what is removed, then the risks.
+
+## Comparing two versions
+
+```bash
+c4ish diff approved.c4ish.json plan.c4ish.json    # two files
+c4ish diff plan.c4ish.json --base <commit>        # the same file at that commit, against the working tree
+c4ish diff ... --only structure                   # keep some aspects (comma-separated)
+c4ish diff ... --json                             # the full comparison
+c4ish diff ... --out review.c4ish.json            # a review model; open with `c4ish view review.c4ish.json --tour`
+```
+
+Items are matched by **id**, so ids must not change between versions. An item is `added`, `removed` or `changed`, and a changed item lists each property that differs with its value before and after.
+
+| Aspect | Holds |
+|---|---|
+| `structure` | What the design is: kind, parent, change state, patterns and fit, libraries, lifecycle, fields, indexes, ties and their enforcement, parts, relationship ends, kind, enforcement and contract, contract clauses, absences, proposed patterns, and risk and question notes with what they are on |
+| `text` | Titles, subtitles, labels, details, and the wording of notes. A plain remark is text as a whole |
+| `code` | Code references |
+| `presentation` | Views, tours, per-view restrictions, icons and colours |
+| `provenance` | The model's `id` and `provenance` |
+
+- **Members are matched by name too.** A field or an index by its `id`; a tie by its `id`, or else by its pair of fields; a part by its `id`, or else by its title. Without an id, a retitled part reads as one part removed and another added.
+- **A note without an id** is matched by what it is on, its kind and its rank among those. Give a note an id to keep it stable.
+- **Order doesn't matter,** except the fields of an index.
+- **The review model** from `--out` is the later version with its tours replaced by one generated tour: an overview, then one step per item that differs. An item that is gone is described in words, with the place it was spotlit. It honours `--only`. It is for viewing; its tour does not try to pass tour coverage.
 
 ## Example
 

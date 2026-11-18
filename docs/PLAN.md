@@ -63,6 +63,15 @@ Not yet:
 - a code reference on a profile pattern, for its reference implementation;
 - which element kinds are expected to carry a reference (a profile setting and a lint).
 
+## Comparing versions (2026-11-18)
+
+Done: `c4ish diff` compares two versions of a model by id, with an aspect on every difference, and writes a review model whose tour walks what differs; optional `id` on parts (DECISIONS 42–47).
+
+Not yet:
+- drawing an item that is gone. The review tour describes it in words and spotlights where it was;
+- a marker in the drawing for "differs from the earlier version", separate from the change state;
+- `c4ish view` taking the two versions directly, without the review file in between.
+
 ## Risks
 - **Layout and routing quality.** TALA handles hierarchical placement but ignores preset waypoints; strict containment and stable routes after manual moves aren't guaranteed by any tested open-source option. The fallback: recompute only the routes a move affects, and accept engine routes otherwise. A commercial router is an option, but only after it passes the same tests.
 - **TALA availability and build.** Confirm licensing and a reproducible Nix build early (M3 spike before M4 work depends on it).

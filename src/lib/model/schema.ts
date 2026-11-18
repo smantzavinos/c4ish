@@ -135,7 +135,7 @@ export const modelSchema = {
 							type: 'object',
 							required: ['title'],
 							additionalProperties: false,
-							properties: { title: text, pattern: { anyOf: [text, { type: 'null' }] }, change: text, code: { type: 'array', items: text } }
+							properties: { id, title: text, pattern: { anyOf: [text, { type: 'null' }] }, change: text, code: { type: 'array', items: text } }
 						}
 					},
 					divergence,

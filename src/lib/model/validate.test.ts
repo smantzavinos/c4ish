@@ -67,6 +67,25 @@ describe('semantics', () => {
 		m.elements.push({ ...m.elements[0] });
 		expect(codes(m)).toContain('duplicate-id');
 	});
+	it('reports a member name used twice inside one element', () => {
+		const dup = (edit: (m: Model) => void) => {
+			const m = clone(base);
+			edit(m);
+			return check(m)
+				.diagnostics.filter((d) => d.code === 'duplicate-id')
+				.map((d) => d.message);
+		};
+		const tbl = (m: Model) => m.elements[2];
+		const loose = { enforcement: 'nothing' };
+		expect(dup((m) => void tbl(m).fields!.push({ id: 'a' }))).toEqual(['field "a" appears more than once in "tbl"']);
+		expect(dup((m) => void (tbl(m).indexes = [{ id: 'i', fields: ['a'] }, { id: 'i', fields: ['b'] }]))).toEqual(['index "i" appears more than once in "tbl"']);
+		// a tie without an id is named by its pair of fields, in either order
+		expect(dup((m) => void (tbl(m).ties = [{ fields: ['a', 'b'], ...loose }, { fields: ['b', 'a'], ...loose }]))).toEqual(['tie "a~b" appears more than once in "tbl"']);
+		expect(dup((m) => void (tbl(m).ties = [{ id: 't1', fields: ['a', 'b'], ...loose }, { id: 't2', fields: ['b', 'a'], ...loose }]))).toEqual([]);
+		// a part without an id is named by its title
+		expect(dup((m) => void (m.elements[1].parts = [{ title: 'Reader' }, { title: 'Reader' }]))).toEqual(['part "Reader" appears more than once in "svc"']);
+		expect(dup((m) => void (m.elements[1].parts = [{ id: 'r1', title: 'Reader' }, { id: 'r2', title: 'Reader' }]))).toEqual([]);
+	});
 	it('reports unknown parents and relationship ends', () => {
 		const m = clone(base);
 		m.elements[1].parent = 'nope';
