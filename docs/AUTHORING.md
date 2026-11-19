@@ -61,9 +61,15 @@ A model describes **one planned change** and the unchanged context it touches. I
 | `src/notes/list.ts#listNotes` | A top-level definition: a function, class, `const`, type, interface, enum or namespace |
 | `src/schema.ts#tables.notes` | A definition inside another: an object property, a class member, an enum member |
 | `src/schema.ts#default` | An `export default` with no name |
+| `src/refs.ts#refs['note.create']` | A name with a dot or a space in it, in brackets and single quotes |
+| `src/tools.ts#TOOLS[name='list_notes']` | The entry of an array whose property `name` is that text or number |
+| `src/routes.ts#router.get('/notes')` | A call statement, by the first text it is given |
+| `src/run.ts#run.case('note.create')` | A case of a switch, by its value |
 
 - **Paths** are relative to the repository root.
 - **A name is the full chain** of named definitions around it, outermost first. Unnamed wrappers, such as a call's arguments, are skipped. When a short name doesn't resolve, `c4ish code` suggests the full one.
+- **An array entry** is an object in an array literal. Any property whose value is a text or a number names it; choose the one that tells the entries apart. What the entry holds goes under its first such property: `TOOLS[name='list_notes'].run`.
+- **A call statement** is a statement that calls something and declares nothing, such as a route, a command or a test: `router.get('/notes', handler)`. In a chain of calls the name is the first call given a text: `program.command('list').action(run)` is `program.command('list')`. What it holds goes under it: `describe('notes').it('lists')`.
 - **Several references** go on an element that spans several definitions or files.
 - **Names resolve in TypeScript and JavaScript** (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), and in the script blocks of a Svelte component (`.svelte`): `src/List.svelte#toggle`. A component's markup and styles have no names; a whole-file reference covers them. Any other file takes a whole-file reference.
 - **One name declared several times in one place** (overloads, a `const` and a `type`) is one definition. The same name in two different places is ambiguous: qualify it.
@@ -72,11 +78,15 @@ A model describes **one planned change** and the unchanged context it touches. I
 ```bash
 c4ish code plan.c4ish.json                    # every reference resolves in the working tree
 c4ish code plan.c4ish.json --base <commit>    # what changed in each since that commit (--json for the full report)
+c4ish code plan.c4ish.json --base <commit> --head <commit>   # between two commits: nothing later or uncommitted is seen
 ```
+
+Without `--base`, the references of a removed element are not looked for: its code is gone, and there is no commit to find it at.
 
 With `--base`, each reference is `added`, `removed`, `modified` or `unchanged`:
 - The definition's text is compared, so one that only moved within its file is unchanged.
-- The comment lines directly above a definition are outside it. A change there is reported as a changed comment.
+- A definition that was only laid out again (line breaks, indentation, spaces between tokens) is unchanged, and the report says its layout changed. A file with no parser, and a whole component, are compared as text.
+- The comment lines directly above a definition are outside it. A change there, other than to its indentation, is reported as a changed comment.
 - `changed through` names a changed top-level definition in the same file that this one is built from.
 - A definition that was renamed or moved stops resolving, with a hint to where it went. Correct the reference.
 - Every changed line is listed with the references that contain it, so lines inside no reference stand out.

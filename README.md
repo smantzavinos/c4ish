@@ -51,7 +51,7 @@ pnpm render:examples   # every example view -> examples/*/<view>.svg (+ --png)
 pnpm c4ish render <model> --view engineering --out eng.svg --appendix   # + eng.svg.appendix.md (details, contracts, notes)
 pnpm c4ish tour <model> --png   # guided review tour -> <model dir>/tour/: NN-<step>.svg (+png), index.html, tour.md
 pnpm c4ish view <model> --tour  # local viewer with this model, in tour mode; live-reloads on save (--step id, --port n, --no-open)
-pnpm c4ish code <model> --base <commit>   # resolve the model's code references; what changed in each since <commit> (--json)
+pnpm c4ish code <model> --base <commit>   # resolve the model's code references; what changed in each since <commit> (--json; --head <commit> in place of the working tree)
 pnpm c4ish code <profile>                 # do the reference implementations its patterns name resolve?
 pnpm c4ish profile <profile>              # the profile as c4ish reads it, default merged in (no file: the default)
 pnpm c4ish diff <old> <new> --only structure   # what differs between two versions of a model, by id (--json; --base <commit>; --out review.json for a tour of the differences)

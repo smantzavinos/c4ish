@@ -26,7 +26,12 @@ function repo(files: Record<string, string>) {
 	git('add', '-A');
 	git('commit', '-q', '-m', 'base');
 	const base = git('rev-parse', 'HEAD');
-	return { root, base, write, remove: (path: string) => rmSync(join(root, path)) };
+	const commit = () => {
+		git('add', '-A');
+		git('commit', '-q', '-m', 'next');
+		return git('rev-parse', 'HEAD');
+	};
+	return { root, base, write, commit, remove: (path: string) => rmSync(join(root, path)) };
 }
 
 /** A model whose elements carry only what the report reads. */
@@ -353,5 +358,242 @@ describe('a Svelte component', () => {
 			['src/List.svelte#toggle', 'unchanged']
 		]);
 		expect(report.unowned).toEqual({ files: 0, ranges: 0, lines: 0 });
+	});
+});
+
+describe('names for code that declares nothing', () => {
+	const TOOLS = `export const TOOLS = [
+	// creates a note
+	{ name: 'create_note', kind: 'write', run: () => 1 },
+	{ name: 'list_notes', kind: 'read', run: () => 2 }
+];
+
+export const handlers = {
+	'note.create': 1,
+	note: { create: 2 }
+};
+
+export function handle(op: string) {
+	switch (op) {
+		case 'note.create': {
+			return 1;
+		}
+		case 'note.list':
+			return 2;
+	}
+}
+
+router.get('/notes', () => {
+	const limit = 20;
+});
+router.get('/notes/:id', () => {
+	const limit = 1;
+});
+`;
+	const refs = (...names: string[]) => model({ a: names.map((n) => `src/tools.ts#${n}`) });
+
+	it('an entry of an array is named by a property of it, and what it holds goes under that name', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS });
+		const report = await run(r, refs("TOOLS[name='list_notes']", "TOOLS[name='create_note'].run", "TOOLS[kind='read']"), false);
+		expect(report.problems).toBe(0);
+		expect(of(report, "src/tools.ts#TOOLS[name='list_notes']").head.extents).toEqual([{ kind: 'entry', start: 4, end: 4 }]);
+		expect(of(report, "src/tools.ts#TOOLS[kind='read']").head.extents).toEqual([{ kind: 'entry', start: 4, end: 4 }]);
+		expect(of(report, "src/tools.ts#TOOLS[name='create_note'].run").head.extents).toEqual([{ kind: 'property', start: 3, end: 3 }]);
+	});
+
+	it('an entry added to an array is added, and its lines are its own; the array around it is modified', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS });
+		r.write('src/tools.ts', TOOLS.replace("\t{ name: 'list_notes'", "\t{ name: 'drop_note', kind: 'write', run: () => 3 },\n\t{ name: 'list_notes'"));
+		const report = await run(r, refs('TOOLS', "TOOLS[name='drop_note']", "TOOLS[name='list_notes']", "TOOLS[name='create_note']"));
+		expect(report.references.map((x) => x.delta)).toEqual(['modified', 'added', 'unchanged', 'unchanged']);
+		expect(of(report, "src/tools.ts#TOOLS[name='create_note']").head.extents![0].comment).toEqual({ start: 2, end: 2 });
+		expect(lines(file(report, 'src/tools.ts').head)).toEqual(["4-4:src/tools.ts#TOOLS[name='drop_note']>src/tools.ts#TOOLS"]);
+	});
+
+	it('a name with a dot in it is written in brackets, apart from the nested name it would read as', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS });
+		const report = await run(r, refs("handlers['note.create']", 'handlers.note.create', "handlers['note']"), false);
+		expect(report.problems).toBe(0);
+		expect(of(report, "src/tools.ts#handlers['note.create']").head.extents).toEqual([{ kind: 'property', start: 8, end: 8 }]);
+		expect(of(report, 'src/tools.ts#handlers.note.create').head.extents).toEqual([{ kind: 'property', start: 9, end: 9 }]);
+		expect(of(report, "src/tools.ts#handlers['note']").head.extents).toEqual([{ kind: 'property', start: 9, end: 9 }]);
+	});
+
+	it('suggests the bracketed name when the dotted one names nothing', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS.replace('\tnote: { create: 2 }\n', '') });
+		const report = await run(r, refs('handlers.note.create'), false);
+		expect(report.references[0].problem).toBe("no such definition (did you mean #handlers['note.create']?)");
+	});
+
+	it('a case of a switch is named by its value', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS });
+		r.write('src/tools.ts', TOOLS.replace('return 2;', 'return 3;'));
+		const report = await run(r, refs("handle.case('note.create')", "handle.case('note.list')"));
+		expect(report.references.map((x) => [x.head.extents, x.delta])).toEqual([
+			[[{ kind: 'case', start: 14, end: 16 }], 'unchanged'],
+			[[{ kind: 'case', start: 17, end: 18 }], 'modified']
+		]);
+	});
+
+	it('a call statement is named by the first text it is given, and what it holds goes under that name', async () => {
+		const r = repo({ 'src/tools.ts': TOOLS });
+		r.write('src/tools.ts', TOOLS.replace('const limit = 1;', 'const limit = 2;'));
+		const report = await run(r, refs("router.get('/notes')", "router.get('/notes/:id')", "router.get('/notes/:id').limit", 'limit'));
+		expect(report.references.map((x) => [x.head.extents?.map((e) => `${e.kind} ${e.start}-${e.end}`).join(), x.delta ?? x.problem])).toEqual([
+			['call 22-24', 'unchanged'],
+			['call 25-27', 'modified'],
+			['variable 26-26', 'modified'],
+			[undefined, 'missing']
+		]);
+		expect(of(report, 'src/tools.ts#limit').problem).toContain("did you mean #router.get('/notes').limit, #router.get('/notes/:id').limit?");
+	});
+});
+
+describe('layout', () => {
+	const WAS = `export function total(items: number[]) {
+	// adds them up
+	return items.reduce((sum, n) => sum + n, 0);
+}
+
+export const label = \`total:  \${total([1, 2])}\`;
+
+export function next(n: number) {
+	return n + 1;
+}
+`;
+
+	it('a definition whose text differs only in white space between tokens is unchanged, and says so', async () => {
+		const r = repo({ 'src/sum.ts': WAS });
+		r.write('src/sum.ts', WAS.replace('\treturn items.reduce((sum, n) => sum + n, 0);', '\t\t// adds them up\n\t\treturn items.reduce(\n\t\t\t(sum, n) => sum + n,\n\t\t\t0\n\t\t);').replace('\t// adds them up\n', ''));
+		const report = await run(r, model({ a: ['src/sum.ts#total', 'src/sum.ts#next', 'src/sum.ts'] }));
+		expect(report.references.map((x) => [x.delta, x.layoutChanged])).toEqual([
+			['unchanged', true],
+			['unchanged', undefined],
+			['unchanged', true]
+		]);
+		expect(lines(file(report, 'src/sum.ts').head)).toEqual(['2-6:src/sum.ts#total>src/sum.ts']);
+	});
+
+	it('a change inside a string, a template or a comment is a change, as is a line break that alters the syntax', async () => {
+		const changed = async (from: string, to: string, ref: string) => {
+			const r = repo({ 'src/sum.ts': WAS });
+			r.write('src/sum.ts', WAS.replace(from, to));
+			const report = await run(r, model({ a: [`src/sum.ts#${ref}`] }));
+			return [report.references[0].delta, report.references[0].layoutChanged];
+		};
+		expect(await changed('total:  ${', 'total: ${', 'label')).toEqual(['modified', undefined]);
+		expect(await changed('// adds them up', '// adds  them up', 'total')).toEqual(['modified', undefined]);
+		expect(await changed('return n + 1;', 'return\n\tn + 1;', 'next')).toEqual(['modified', undefined]);
+		expect(await changed('sum + n, 0', 'sum + n,  0', 'total')).toEqual(['unchanged', true]);
+	});
+
+	it('a comment above a definition that was only indented is not a changed comment', async () => {
+		const SOURCE = '// the answer\nexport const answer = 42;\n';
+		const r = repo({ 'src/a.ts': SOURCE });
+		r.write('src/a.ts', '    // the answer\n    export const answer = 42;\n');
+		const report = await run(r, model({ a: ['src/a.ts#answer'] }));
+		expect(report.references[0]).toMatchObject({ delta: 'unchanged' });
+		expect(report.references[0].commentChanged).toBeUndefined();
+		const r3 = repo({ 'src/a.ts': SOURCE });
+		r3.write('src/a.ts', '// the reply\nexport const answer = 42;\n');
+		expect((await run(r3, model({ a: ['src/a.ts#answer'] }))).references[0].commentChanged).toBe(true);
+	});
+
+	it('a file with no parser, and a component, are compared as text', async () => {
+		const r = repo({ 'notes.txt': 'a b\n', 'src/V.svelte': '<script>\n\tlet a = 1;\n</script>\n\n<p>a</p>\n' });
+		r.write('notes.txt', 'a  b\n');
+		r.write('src/V.svelte', '<script>\n\tlet a = 1;\n</script>\n\n<p>b</p>\n');
+		const report = await run(r, model({ a: ['notes.txt', 'src/V.svelte'] }));
+		expect(report.references.map((x) => [x.delta, x.layoutChanged])).toEqual([
+			['modified', undefined],
+			['modified', undefined]
+		]);
+	});
+});
+
+describe('a removed element with no base commit', () => {
+	const removedModel = (change: string, partChange?: string): Model => ({
+		schemaVersion: 1,
+		title: 't',
+		views: [{ id: 'eng', kind: 'engineering', title: 't' }],
+		elements: [
+			{ id: 'old', kind: 'component', title: 'old', change, code: ['src/gone.ts', 'src/schema.ts#gone'], parts: [{ title: 'p', ...(partChange ? { change: partChange } : {}), code: ['src/gone.ts#x'] }] },
+			{ id: 'kept', kind: 'component', title: 'kept', code: ['src/schema.ts#helper'] }
+		]
+	});
+
+	it('is not looked for: its references are no problem, and say why', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		const report = await run(r, removedModel('removed'), false);
+		expect(report.problems).toBe(0);
+		expect(report.references.map((x) => [x.ref, x.head.status, x.problem])).toEqual([
+			['src/gone.ts', 'missing-file', undefined],
+			['src/schema.ts#gone', 'missing-name', undefined],
+			['src/gone.ts#x', 'missing-file', undefined],
+			['src/schema.ts#helper', 'resolved', undefined]
+		]);
+		expect(of(report, 'src/gone.ts').head.detail).toBe('not looked for: its element is removed, and no base commit was given to find it at');
+	});
+
+	it('is still a problem when anything else carries the reference, or a part of it is not removed', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		expect((await run(r, removedModel('modified'), false)).problems).toBe(3);
+		expect((await run(r, removedModel('removed', 'new'), false)).problems).toBe(1);
+		const shared = removedModel('removed');
+		shared.elements[1].code = ['src/gone.ts'];
+		expect((await run(r, shared, false)).problems).toBe(1);
+	});
+
+	it('with a base it is looked for there, and missing at both ends is a problem', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		r.write('src/schema.ts', SCHEMA.replace('export function helper', 'export function helped'));
+		const m = removedModel('removed');
+		m.elements[0].code = ['src/schema.ts#helper', 'src/gone.ts'];
+		m.elements[0].parts = [];
+		m.elements[1].code = [];
+		const report = await run(r, m);
+		expect(report.references.map((x) => [x.delta, Boolean(x.problem)])).toEqual([
+			['removed', false],
+			['missing', true]
+		]);
+	});
+});
+
+describe('a head commit in place of the working tree', () => {
+	it('sees what the commit holds: nothing later, nothing uncommitted, no untracked file', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		r.write('src/schema.ts', SCHEMA.replace('return 1;', 'return 2;'));
+		const head = r.commit();
+		r.write('src/schema.ts', SCHEMA.replace('return 1;', 'return 3;').replace('owner: 1', 'owner: 2'));
+		r.write('src/new.ts', 'export const later = 1;\n');
+		const m = model({ a: ['src/schema.ts#helper', 'src/schema.ts#tables', 'src/new.ts#later'] });
+
+		const committed = await codeReport(m, profile, { root: r.root, base: r.base, head });
+		expect(committed.head).toBe(head);
+		expect(committed.references.map((x) => [x.delta, x.changedThrough, x.problem])).toEqual([
+			['modified', undefined, undefined],
+			['unchanged', undefined, undefined],
+			['missing', undefined, 'no such file at the base or at the head']
+		]);
+		expect(committed.files!.map((f) => f.path)).toEqual(['src/schema.ts']);
+		expect(lines(file(committed, 'src/schema.ts').head)).toEqual(['10-10:src/schema.ts#helper']);
+
+		const working = await codeReport(m, profile, { root: r.root, base: r.base });
+		expect(working.head).toBeUndefined();
+		expect(working.references.map((x) => [x.delta, x.changedThrough])).toEqual([
+			['modified', undefined],
+			['unchanged', ['src/schema.ts#shared']],
+			['added', undefined]
+		]);
+		expect(working.files!.map((f) => f.path)).toEqual(['src/new.ts', 'src/schema.ts']);
+	});
+
+	it('alone, resolves the references as of that commit', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		r.write('src/schema.ts', '');
+		const report = await codeReport(model({ a: ['src/schema.ts#helper'] }), profile, { root: r.root, head: r.base });
+		expect(report).toMatchObject({ head: r.base, problems: 0 });
+		expect(report.base).toBeUndefined();
+		await expect(codeReport(model({ a: ['src/schema.ts'] }), profile, { root: r.root, head: 'no-such-commit' })).rejects.toThrow();
 	});
 });

@@ -158,7 +158,8 @@ export interface Element {
 	mappingLabel?: string;
 	/**
 	 * Where the element lives in the repository: `path`, `path#Name` or `path#Outer.Inner`, relative
-	 * to the repository root. Several when it spans definitions or files. Not rendered.
+	 * to the repository root; also `path#LIST[name='x']` (an array entry), `path#f('text')` (a call
+	 * statement) and `path#f.case('x')`. Several when it spans definitions or files. Not rendered.
 	 */
 	code?: string[];
 	/** Restrict this element to these view ids. */

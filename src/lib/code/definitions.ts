@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser, type Node } from 'web-tree-sitter';
+import { entrySegment, joinName, labelSegment, nameSegment, type Literal } from './reference.js';
 
 /** A language with a grammar. */
 type Grammar = 'typescript' | 'tsx' | 'javascript';
@@ -44,8 +46,10 @@ export interface Extent extends Lines {
 }
 
 export interface Definition {
-	/** Dotted name: the names of the enclosing named definitions, then its own. */
+	/** Its name: the names of the enclosing named definitions, then its own, as `joinName` writes them. */
 	name: string;
+	/** The segments of the name, outermost first. */
+	path: string[];
 	/**
 	 * One extent per declaration. A name declared several times in one scope (overloads, a value and
 	 * a type, a getter and a setter, merged interfaces) is one definition with several extents.
@@ -55,6 +59,8 @@ export interface Definition {
 	ambiguous: boolean;
 	/** Source text of the declarations, without their leading comments. */
 	text: string;
+	/** A digest of the syntax of the declarations with their layout taken out: equal for two texts that differ only in white space. */
+	syntax: string;
 	/** Source text of the leading comments. */
 	commentText: string;
 	/** Identifiers used inside the declarations (candidates for other definitions it is built from). */
@@ -63,6 +69,8 @@ export interface Definition {
 
 export interface FileDefinitions {
 	definitions: Map<string, Definition>;
+	/** A digest of the syntax of the whole file with its layout taken out. Absent when only part of the file is parsed. */
+	syntax?: string;
 	/** True when the parser met syntax it could not read; definitions around it may be missing. */
 	parseErrors: boolean;
 }
@@ -151,20 +159,88 @@ function nameText(n: Node | null): string | undefined {
 	}
 }
 
-/** The name and kind a node declares, if it is a named definition. */
-function declared(n: Node): { name: string; kind: string } | undefined {
+/** A string or number literal as written; a string without its quotes. */
+function literalOf(n: Node | null | undefined): Literal | undefined {
+	if (n?.type === 'string') return { text: n.text.slice(1, -1), quoted: true };
+	if (n?.type === 'number') return { text: n.text, quoted: false };
+	return undefined;
+}
+
+/** An object that is an entry of an array: one name for each property whose value is a literal. */
+function entryNames(n: Node): string[] {
+	const names = new Set<string>();
+	for (const pair of n.namedChildren) {
+		if (pair.type !== 'pair') continue;
+		const key = nameText(pair.childForFieldName('key'));
+		const value = literalOf(pair.childForFieldName('value'));
+		const segment = key && value ? entrySegment(key, value) : undefined;
+		if (segment) names.add(segment);
+	}
+	return [...names];
+}
+
+/** `a`, `a.b`, `this.a`: the names of a plain chain of member accesses. */
+function chainOf(n: Node | null): string[] | undefined {
+	if (n?.type === 'identifier' || n?.type === 'this') return [n.text];
+	if (n?.type !== 'member_expression') return undefined;
+	const property = n.childForFieldName('property');
+	const object = chainOf(n.childForFieldName('object'));
+	return object && property && (property.type === 'property_identifier' || property.type === 'private_property_identifier') ? [...object, property.text] : undefined;
+}
+
+/**
+ * A statement that is a call, or a chain of calls: named by the first call in it whose first
+ * argument is a string, as `callee('string')`. So `router.get('/notes', handler)` and
+ * `program.command('list').action(run)` have names though they declare nothing.
+ */
+function callName(statement: Node): string[] | undefined {
+	let e: Node | null = statement.namedChildren[0] ?? null;
+	if (e?.type === 'await_expression') e = e.namedChildren[0] ?? null;
+	const calls: Node[] = [];
+	while (e?.type === 'call_expression') {
+		calls.unshift(e);
+		const callee: Node | null = e.childForFieldName('function');
+		e = callee?.type === 'member_expression' ? callee.childForFieldName('object') : null;
+	}
+	for (const call of calls) {
+		const first = call.childForFieldName('arguments')?.namedChildren[0];
+		if (first?.type !== 'string') continue;
+		const chain = chainOf(call.childForFieldName('function'));
+		return chain ? [...chain.slice(0, -1).map(nameSegment), labelSegment(chain[chain.length - 1], literalOf(first)!)] : undefined;
+	}
+	return undefined;
+}
+
+/**
+ * The names a node declares and its kind, if it has a name. Each name is a list of segments; what
+ * is named inside the node goes under the first.
+ */
+function declared(n: Node): { names: string[][]; kind: string } | undefined {
 	const kind = KINDS[n.type];
 	if (kind) {
 		// The JavaScript grammar calls a class field's name `property`.
 		const name = nameText(n.childForFieldName(n.type === 'pair' ? 'key' : 'name') ?? n.childForFieldName('property'));
-		return name ? { name, kind } : undefined;
+		if (!name) return undefined;
+		return { names: [n.type === 'internal_module' || n.type === 'module' ? name.split('.').map(nameSegment) : [nameSegment(name)]], kind };
 	}
 	// A bare enum member (`enum E { A }`) is a property_identifier directly in the body.
-	if (n.type === 'property_identifier' && n.parent?.type === 'enum_body') return { name: n.text, kind: 'member' };
+	if (n.type === 'property_identifier' && n.parent?.type === 'enum_body') return { names: [[n.text]], kind: 'member' };
 	// `export default <expression or unnamed function/class>` is named `default`.
 	if (n.type === 'export_statement' && n.children.some((c) => c.type === 'default')) {
 		const inner = n.childForFieldName('declaration') ?? n.childForFieldName('value');
-		if (!inner || !KINDS[inner.type] || !nameText(inner.childForFieldName('name'))) return { name: 'default', kind: 'default' };
+		if (!inner || !KINDS[inner.type] || !nameText(inner.childForFieldName('name'))) return { names: [['default']], kind: 'default' };
+	}
+	if (n.type === 'object' && n.parent?.type === 'array') {
+		const names = entryNames(n);
+		return names.length ? { names: names.map((s) => [s]), kind: 'entry' } : undefined;
+	}
+	if (n.type === 'switch_case') {
+		const label = literalOf(n.childForFieldName('value'));
+		return label ? { names: [[labelSegment('case', label)]], kind: 'case' } : undefined;
+	}
+	if (n.type === 'expression_statement') {
+		const name = callName(n);
+		return name ? { names: [name], kind: 'call' } : undefined;
 	}
 	return undefined;
 }
@@ -189,8 +265,62 @@ function collectUses(n: Node, into: Set<string>) {
 	for (const c of n.namedChildren) collectUses(c, into);
 }
 
+/** What `syntaxOf` reads of a node of a syntax tree. */
+export interface SyntaxNode {
+	id: number;
+	type: string;
+	startIndex: number;
+	endIndex: number;
+	childCount: number;
+	children: SyntaxNode[];
+}
+
+const digest = (text: string) => createHash('sha256').update(text).digest('base64');
+
+/**
+ * The syntax tree of a node written out with the text of every token, and nothing of the layout
+ * between them. Text that no token covers is kept as it is; the lines of a comment are trimmed.
+ * The tree is read once: the nodes whose ids `wanted` holds get their own digest on the way.
+ */
+function writeSyntax(n: SyntaxNode, source: string, wanted?: Map<number, string>): string {
+	const sep = '\u0000';
+	if (n.childCount === 0) {
+		const text = source.slice(n.startIndex, n.endIndex);
+		return n.type + sep + (n.type === 'comment' ? trimLines(text) : text) + sep;
+	}
+	let out = '(' + sep + n.type + sep;
+	let at = n.startIndex;
+	for (const c of n.children) {
+		const gap = source.slice(at, c.startIndex);
+		if (gap.trim()) out += gap + sep;
+		out += writeSyntax(c, source, wanted);
+		at = c.endIndex;
+	}
+	const rest = source.slice(at, n.endIndex);
+	if (rest.trim()) out += rest + sep;
+	out += ')' + sep;
+	if (wanted?.has(n.id)) wanted.set(n.id, digest(out));
+	return out;
+}
+
+/**
+ * A digest of the syntax of a node without its layout: kept in place of the text, which is several
+ * times the source. `wanted` asks for the digest of nodes inside it too, by id.
+ */
+export function syntaxOf(n: SyntaxNode, source: string, wanted?: Map<number, string>): string {
+	return digest(writeSyntax(n, source, wanted));
+}
+
+/** Text with the white space at both ends of every line removed. */
+export const trimLines = (text: string) =>
+	text
+		.split('\n')
+		.map((l) => l.trim())
+		.join('\n');
+
 interface Found {
 	scope: number;
+	path: string[];
 	statements: Node[];
 	extents: Extent[];
 }
@@ -230,7 +360,9 @@ export function svelteScripts(source: string): { code: string; lang: Grammar } {
 export async function parseDefinitions(source: string, lang: Lang): Promise<FileDefinitions> {
 	if (lang === 'svelte') {
 		const scripts = svelteScripts(source);
-		return parseDefinitions(scripts.code, scripts.lang);
+		// The markup is not in what was parsed, so the syntax of the script is not that of the file.
+		const { definitions, parseErrors } = await parseDefinitions(scripts.code, scripts.lang);
+		return { definitions, parseErrors };
 	}
 	const parser = await parserFor(lang);
 	const tree = parser.parse(source);
@@ -252,37 +384,55 @@ export async function parseDefinitions(source: string, lang: Lang): Promise<File
 			const d = declared(n);
 			let inner = path;
 			if (d) {
-				inner = [...path, ...(n.type === 'internal_module' || n.type === 'module' ? d.name.split('.') : [d.name])];
+				inner = [...path, ...d.names[0]];
 				const statement = statementOf(n);
 				const scope = statement.parent?.id ?? 0;
-				const key = inner.join('.');
-				const groups = found.get(key) ?? [];
-				let group = groups.find((g) => g.scope === scope);
-				if (!group) groups.push((group = { scope, statements: [], extents: [] }));
-				group.statements.push(statement);
-				group.extents.push({ kind: d.kind, start: statement.startPosition.row + 1, end: statement.endPosition.row + 1, comment: leadingComment(statement) });
-				found.set(key, groups);
+				const extent: Extent = { kind: d.kind, start: statement.startPosition.row + 1, end: statement.endPosition.row + 1, comment: leadingComment(statement) };
+				for (const name of d.names) {
+					const full = [...path, ...name];
+					const key = joinName(full);
+					const groups = found.get(key) ?? [];
+					let group = groups.find((g) => g.scope === scope);
+					if (!group) groups.push((group = { scope, path: full, statements: [], extents: [] }));
+					group.statements.push(statement);
+					group.extents.push(extent);
+					found.set(key, groups);
+				}
 			}
 			for (const c of n.namedChildren) visit(c, inner);
 		};
 		visit(tree.rootNode, []);
 
+		// The syntax of the file and of every statement found, in one reading of the tree.
+		const syntax = new Map<number, string>();
+		for (const groups of found.values()) for (const g of groups) for (const s of g.statements) syntax.set(s.id, '');
+		const fileSyntax = syntaxOf(tree.rootNode, source, syntax);
+		// A statement can carry several names (an array entry has one for each literal property): read it once.
+		const uses = new Map<number, Set<string>>();
+		const usesOf = (s: Node) => {
+			let u = uses.get(s.id);
+			if (!u) {
+				collectUses(s, (u = new Set<string>()));
+				uses.set(s.id, u);
+			}
+			return u;
+		};
 		const definitions = new Map<string, Definition>();
 		for (const [name, groups] of found) {
 			const statements = groups.flatMap((g) => g.statements);
 			const extents = groups.flatMap((g) => g.extents);
-			const uses = new Set<string>();
-			statements.forEach((s) => collectUses(s, uses));
 			definitions.set(name, {
 				name,
+				path: groups[0].path,
 				extents,
 				ambiguous: groups.length > 1,
 				text: statements.map((s) => s.text).join('\n'),
+				syntax: statements.map((s) => syntax.get(s.id)).join(' '),
 				commentText: extents.map((e) => (e.comment ? lines.slice(e.comment.start - 1, e.comment.end).join('\n') : '')).join('\n'),
-				uses: [...uses]
+				uses: [...new Set(statements.flatMap((s) => [...usesOf(s)]))]
 			});
 		}
-		return { definitions, parseErrors: tree.rootNode.hasError };
+		return { definitions, syntax: fileSyntax, parseErrors: tree.rootNode.hasError };
 	} finally {
 		tree.delete();
 	}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { languageOf, parseDefinitions, svelteScripts } from './definitions.js';
-import { isCodeRef, parseCodeRef } from './reference.js';
+import { languageOf, parseDefinitions, svelteScripts, syntaxOf, type SyntaxNode } from './definitions.js';
+import { isCodeRef, joinName, parseCodeRef } from './reference.js';
 
 const SOURCE = `// file header
 
@@ -57,6 +57,25 @@ describe('code reference text', () => {
 		expect(parseCodeRef('src/a.ts#Foo')).toMatchObject({ path: 'src/a.ts', name: ['Foo'] });
 		expect(parseCodeRef('src/a.ts#Outer.Inner')).toMatchObject({ name: ['Outer', 'Inner'] });
 		expect(parseCodeRef('src/a.ts#C.#secret')).toMatchObject({ name: ['C', '#secret'] });
+	});
+	it('parses a bracketed name, an array entry, a call and a case, each into one form', () => {
+		const name = (raw: string) => {
+			const ref = parseCodeRef(`a.ts#${raw}`);
+			return isCodeRef(ref) ? ref.name : undefined;
+		};
+		expect(name("refs['note.create']")).toEqual(['refs', "['note.create']"]);
+		expect(name("refs['plain'].x")).toEqual(['refs', 'plain', 'x']);
+		expect(name("refs['it\\'s']")).toEqual(['refs', "['it\\'s']"]);
+		expect(name("LIST[name='a.b'].run")).toEqual(['LIST', "[name='a.b']", 'run']);
+		expect(name('LIST[id=3]')).toEqual(['LIST', '[id=3]']);
+		expect(name("router.get('/notes/:id').limit")).toEqual(['router', "get('/notes/:id')", 'limit']);
+		expect(name("handle.case('a b')")).toEqual(['handle', "case('a b')"]);
+		expect(name('handle.case(2)')).toEqual(['handle', 'case(2)']);
+		expect(joinName(name("LIST[name='a.b'].run")!)).toBe("LIST[name='a.b'].run");
+		expect(joinName(name("refs['plain'].x")!)).toBe('refs.plain.x');
+	});
+	it.each(["['a']", "A.['a']", "A['a'", "A['a']b", 'A[3]', "A[k='v'", 'A[k=]', "A[='v']", "A.f('x'", 'A.f()', 'A.f(x)', "A.f('x')y", "A['a", 'A=b', "A.'b'"])('rejects the name %j', (name) => {
+		expect(isCodeRef(parseCodeRef(`a.ts#${name}`))).toBe(false);
 	});
 	it.each(['', ' a.ts', '/abs/a.ts', '../a.ts', 'a/./b.ts', 'a\\b.ts', '#Foo', 'a.ts#', 'a.ts#A..B', 'a.ts#A B'])('rejects %j', (raw) => {
 		expect(isCodeRef(parseCodeRef(raw))).toBe(false);
@@ -161,6 +180,90 @@ describe('named definitions', () => {
 		const r = await parseDefinitions('export const ok = 1;\nconst = ;\nfunction later() {}\n', 'typescript');
 		expect(r.parseErrors).toBe(true);
 		expect(r.definitions.has('ok')).toBe(true);
+	});
+});
+
+describe('names for code that declares nothing', () => {
+	const names = async (source: string) => [...(await parseDefinitions(source, 'typescript')).definitions.keys()];
+
+	it('names a chain of calls by the first call in it that is given text', async () => {
+		expect(await names("program\n\t.command('list')\n\t.description('Lists')\n\t.action(() => {});\n")).toEqual(["program.command('list')"]);
+		expect(await names('await register("thing", () => {});\n')).toEqual(["register('thing')"]);
+		expect(await names("this.app.use('/api', api);\n")).toEqual(["this.app.use('/api')"]);
+		expect(await names("describe('suite', () => {\n\tit('works', () => {\n\t\tconst local = 1;\n\t});\n});\n")).toEqual(["describe('suite')", "describe('suite').it('works')", "describe('suite').it('works').local"]);
+	});
+
+	it.each(["expect(x).toBe('y');", 'run(options);', "make()('x');", "list[0]('x');", 'run(`x`);', "const made = make('x');"])('gives no call name to %j', async (statement) => {
+		expect((await names(`${statement}\n`)).filter((n) => n.includes('('))).toEqual([]);
+	});
+
+	it('names an array entry by each property that is a literal, and puts what it holds under the first', async () => {
+		const source = "const LIST = [\n\t{ run: () => 1, id: 7, name: 'a', 'odd key': 'x', on: true },\n\t{ run: () => 2 },\n\t'text'\n];\n";
+		expect(await names(source)).toEqual(['LIST', 'LIST[id=7]', "LIST[name='a']", 'LIST[id=7].run', 'LIST[id=7].id', 'LIST[id=7].name', "LIST[id=7]['odd key']", 'LIST[id=7].on', 'LIST.run']);
+	});
+
+	it('names a case by its value, and not the default', async () => {
+		expect(await names("function f(x) {\n\tswitch (x) {\n\t\tcase 'a':\n\t\tcase 2:\n\t\t\treturn 1;\n\t\tcase other:\n\t\tdefault:\n\t\t\treturn 2;\n\t}\n}\n")).toEqual(['f', "f.case('a')", 'f.case(2)']);
+	});
+
+	it('writes a name with a character the syntax uses in brackets', async () => {
+		expect(await names("const o = { 'a.b': 1, 'a b': 2, 'a-b': 3, a: { b: 4 } };\n")).toEqual(['o', "o['a.b']", "o['a b']", 'o.a-b', 'o.a', 'o.a.b']);
+	});
+});
+
+describe('syntax without layout', () => {
+	const syntax = async (source: string, name: string) => (await parseDefinitions(source, 'typescript')).definitions.get(name)!.syntax;
+
+	it('is the same for two texts that differ only in white space between tokens', async () => {
+		const a = await syntax('const f = (a: number, b: number) => {\n\treturn a + b;\n};\n', 'f');
+		expect(await syntax('const f = (\n\ta: number,\n\tb: number\n) => { return a+b; };\n', 'f')).toBe(a);
+		expect(await syntax('const f = (a: number, b: number) => {\n\treturn a - b;\n};\n', 'f')).not.toBe(a);
+	});
+
+	it('reads text outside ASCII where it is', async () => {
+		const a = await syntax("const note = 'é😀';\nconst f = (a: number) => {\n\treturn a; // né 😀\n};\n", 'f');
+		expect(await syntax("const note = 'é😀';\nconst f = (a: number) => { return a; // né 😀\n};\n", 'f')).toBe(a);
+		expect(await syntax("const note = 'é😀';\nconst f = (a: number) => {\n\treturn a; // ne 😀\n};\n", 'f')).not.toBe(a);
+		expect(await syntax("const note = 'e😀';\nconst f = (a: number) => {\n\treturn a; // né 😀\n};\n", 'f')).toBe(a);
+	});
+
+	it('differs when a line break alters what the tokens mean', async () => {
+		expect(await syntax('function f() {\n\treturn\n\t1;\n}\n', 'f')).not.toBe(await syntax('function f() {\n\treturn 1;\n}\n', 'f'));
+	});
+
+	it('keeps white space inside a string, a template and a regular expression', async () => {
+		for (const [was, now] of [
+			["'a b'", "'a  b'"],
+			['`a ${x} b`', '`a  ${x} b`'],
+			['/a b/', '/a  b/']
+		])
+			expect(await syntax(`const v = ${was};\n`, 'v')).not.toBe(await syntax(`const v = ${now};\n`, 'v'));
+	});
+
+	it('takes the indentation out of a comment, and nothing else of it', async () => {
+		const a = await syntax('function f() {\n\t/*\n\t * why\n\t */\n\treturn 1;\n}\n', 'f');
+		expect(await syntax('function f() {\n\t\t/*\n\t\t * why\n\t\t */\n\t\treturn 1;\n}\n', 'f')).toBe(a);
+		expect(await syntax('function f() {\n\t/*\n\t * why not\n\t */\n\treturn 1;\n}\n', 'f')).not.toBe(a);
+	});
+
+	// A tree made by hand: the grammars shipped leave no text outside a token, and a later one might.
+	const leaf = (type: string, text: string, startIndex: number): SyntaxNode => ({ id: 0, type, startIndex, endIndex: startIndex + text.length, childCount: 0, children: [] });
+	const node = (type: string, source: string, children: SyntaxNode[]): SyntaxNode => ({ id: 0, type, startIndex: 0, endIndex: source.length, childCount: children.length, children });
+
+	it('keeps text that no token covers as it is', () => {
+		const tree = (source: string) => node('template', source, [leaf('open', '`', 0), leaf('close', '`', source.length - 1)]);
+		expect(syntaxOf(tree('`a b`'), '`a b`')).not.toBe(syntaxOf(tree('`a  b`'), '`a  b`'));
+		expect(syntaxOf(tree('`  `'), '`  `')).toBe(syntaxOf(tree('` `'), '` `'));
+		const open = (source: string) => node('template', source, [leaf('open', '`', 0)]);
+		expect(syntaxOf(open('`a b'), '`a b')).not.toBe(syntaxOf(open('`a  b'), '`a  b'));
+	});
+
+	it('tells two trees with the same tokens apart', () => {
+		const source = 'a b c';
+		const [a, b, c] = [leaf('id', 'a', 0), leaf('id', 'b', 2), leaf('id', 'c', 4)];
+		const group = (children: SyntaxNode[]): SyntaxNode => ({ ...node('group', source, children), startIndex: children[0].startIndex, endIndex: children[children.length - 1].endIndex });
+		const shapes = [group([group([a, b]), c]), group([a, group([b, c])]), group([group([a, b, c])]), group([a, b, c]), group([a, b, { ...c, type: 'name' }])];
+		expect(new Set(shapes.map((t) => syntaxOf(t, source))).size).toBe(shapes.length);
 	});
 });
 

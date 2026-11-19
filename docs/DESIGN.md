@@ -72,12 +72,12 @@ Profiles can define lifecycle states (for example draft and released) with their
 A model can list the scenarios the change must make possible, by id and title. Each tour step names the ones it walks, so the reviewer sees what a step is evidence for, and a scenario that nothing walks is reported. The scenario's detail stays in the plan text: the model holds only enough to tie the tour to it (DECISIONS 49).
 
 ### Code references
-An element, or one of its parts, can name the code it stands for: `code: ["path", "path#Name", "path#Outer.Inner"]`. This ties a model to code; it does not derive one from the other.
+An element, or one of its parts, can name the code it stands for: `code: ["path", "path#Name", "path#Outer.Inner"]`, and by a label where the code declares no name: an array entry, a call statement, a case. This ties a model to code; it does not derive one from the other.
 - A reference is a **name**, found by parsing the file (tree-sitter). No line numbers or syntax-tree nodes are stored, so a reference survives edits around it.
-- `c4ish code` resolves every reference in the working tree and, given a base commit, at that commit. It reports what happened to each, and which references contain each changed line.
+- `c4ish code` resolves every reference in the working tree (or at a head commit) and, given a base commit, at that commit. It reports what happened to each, and which references contain each changed line.
 - The report states facts. What a difference means (is this element allowed to change?) belongs to whoever calls it.
 
-The rules are in DECISIONS 33–41.
+The rules are in DECISIONS 33–41 and 56–62.
 
 ### Two versions of a model
 A model changes after it is reviewed. `c4ish diff` compares two versions item by item, matched by id, and says what was added, removed and changed.

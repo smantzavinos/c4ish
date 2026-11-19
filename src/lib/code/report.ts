@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Model, Profile } from '../model/types.js';
-import { languageOf, parseDefinitions, type Definition, type Extent, type FileDefinitions, type Lines } from './definitions.js';
-import { isCodeRef, parseCodeRef, type CodeRef } from './reference.js';
+import { languageOf, parseDefinitions, trimLines, type Definition, type Extent, type FileDefinitions, type Lines } from './definitions.js';
+import { isCodeRef, joinName, parseCodeRef, type CodeRef } from './reference.js';
 
 /** A model element (or one of its parts) that carries a reference. */
 export interface RefOwner {
@@ -17,7 +17,7 @@ export interface RefOwner {
 
 export type SideStatus = 'resolved' | 'missing-file' | 'missing-name' | 'ambiguous' | 'unsupported' | 'invalid';
 
-/** How a reference resolves at one end (the base commit or the working tree). */
+/** How a reference resolves at one end: the base commit, or the head (the working tree unless a head commit is given). */
 export interface RefSide {
 	status: SideStatus;
 	/** Where it is. A whole-file reference has one extent of kind `file`. */
@@ -42,11 +42,15 @@ export interface RefReport<Owner = RefOwner> {
 	/** Present when a base commit was given. */
 	base?: RefSide;
 	/**
-	 * What happened to the referenced code between the base and the working tree, by comparing its
-	 * text (so a definition that only moved within its file is unchanged). `missing`: at neither end.
+	 * What happened to the referenced code between the base and the head, by comparing its text (so
+	 * a definition that only moved within its file is unchanged). Where the file is parsed, text
+	 * that differs only in layout (white space between tokens) is unchanged too. `missing`: at
+	 * neither end.
 	 */
 	delta?: 'added' | 'removed' | 'modified' | 'unchanged' | 'missing';
-	/** The comment lines directly above the definition differ. */
+	/** The text differs, but only in its layout. The delta is `unchanged`. */
+	layoutChanged?: boolean;
+	/** The comment lines directly above the definition differ, in more than their indentation. */
 	commentChanged?: boolean;
 	/** Changed top-level definitions of the same file that this one is built from, directly or not. */
 	changedThrough?: string[];
@@ -67,16 +71,18 @@ export interface FileChange {
 	binary?: true;
 	/** Lines removed or replaced, numbered as in the base commit. */
 	base: ChangedLines[];
-	/** Lines added or replacing, numbered as in the working tree. */
+	/** Lines added or replacing, numbered as at the head. */
 	head: ChangedLines[];
 }
 
 export interface CodeReport<Owner = RefOwner> {
 	root: string;
-	/** The base commit, resolved. Absent when references were only resolved in the working tree. */
+	/** The base commit, resolved. Absent when references were only resolved at the head. */
 	base?: string;
+	/** The head commit, resolved. Absent when the head is the working tree. */
+	head?: string;
 	references: RefReport<Owner>[];
-	/** Every file that differs between the base and the working tree, untracked files included. */
+	/** Every file that differs between the base and the head; with the working tree as head, untracked files included. */
 	files?: FileChange[];
 	/** Changed lines that sit inside no reference. */
 	unowned?: { files: number; ranges: number; lines: number };
@@ -86,8 +92,10 @@ export interface CodeReport<Owner = RefOwner> {
 export interface CodeReportOptions {
 	/** Repository root that reference paths are relative to. */
 	root: string;
-	/** Commit to compare the working tree against. */
+	/** Commit to compare the head against. */
 	base?: string;
+	/** Commit to read in place of the working tree, so that nothing later or uncommitted is seen. */
+	head?: string;
 }
 
 function git(root: string, args: string[]): string {
@@ -130,29 +138,34 @@ class Side {
 
 interface Resolved extends RefSide {
 	text?: string;
+	/** The text with its layout taken out, where the file is parsed. */
+	syntax?: string;
 	commentText?: string;
 	definition?: Definition;
 }
+
+/** A name with nothing but dots between its parts: what `a['b.c']` and `a.b.c` have in common. */
+const dotted = (name: string) => name.replace(/\['((?:[^'\\]|\\.)*)'\]/g, '.$1');
 
 async function resolveRef(ref: CodeRef, side: Side): Promise<Resolved> {
 	const content = side.content(ref.path);
 	if (!ref.name) {
 		if (content === undefined) return { status: 'missing-file' };
-		return { status: 'resolved', extents: [{ kind: 'file', start: 1, end: lineCount(content) }], text: content, commentText: '' };
+		return { status: 'resolved', extents: [{ kind: 'file', start: 1, end: lineCount(content) }], text: content, syntax: (await side.definitions(ref.path))?.syntax, commentText: '' };
 	}
 	if (!languageOf(ref.path)) return { status: 'unsupported', detail: `no parser for this file type; reference the whole file (${ref.path})` };
 	if (content === undefined) return { status: 'missing-file' };
 	const file = (await side.definitions(ref.path))!;
-	const name = ref.name.join('.');
+	const name = joinName(ref.name);
 	const def = file.definitions.get(name);
 	if (!def) {
 		const last = ref.name[ref.name.length - 1];
-		const near = [...file.definitions.keys()].filter((k) => k === last || k.endsWith(`.${last}`)).slice(0, 3);
+		const near = [...file.definitions.values()].filter((d) => d.path[d.path.length - 1] === last || dotted(d.name) === dotted(name)).map((d) => d.name).slice(0, 3);
 		const detail = [near.length ? `did you mean ${near.map((n) => `#${n}`).join(', ')}?` : '', file.parseErrors ? 'the file has syntax the parser could not read' : ''].filter(Boolean).join('; ');
 		return { status: 'missing-name', ...(detail ? { detail } : {}) };
 	}
 	if (def.ambiguous) return { status: 'ambiguous', extents: def.extents, detail: `declared in ${def.extents.length} different places (lines ${def.extents.map((e) => e.start).join(', ')}); qualify the name` };
-	return { status: 'resolved', extents: def.extents, text: def.text, commentText: def.commentText, definition: def };
+	return { status: 'resolved', extents: def.extents, text: def.text, syntax: def.syntax, commentText: def.commentText, definition: def };
 }
 
 const publicSide = ({ status, extents, detail }: Resolved): RefSide => ({ status, ...(extents ? { extents } : {}), ...(detail ? { detail } : {}) });
@@ -192,9 +205,10 @@ export function parseDiff(diff: string): RawChange[] {
 	return out;
 }
 
-function changesSince(root: string, base: string): RawChange[] {
-	const changes = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, '--']));
-	for (const path of git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) {
+/** What differs between the base and the head commit, or with no head commit the working tree and its untracked files. */
+function changesSince(root: string, base: string, head?: string): RawChange[] {
+	const changes = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, ...(head ? [head] : []), '--']));
+	for (const path of head ? [] : git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) {
 		const text = readFileSync(join(root, path), 'utf8');
 		const binary = text.includes('\0');
 		const n = lineCount(text);
@@ -246,22 +260,27 @@ function regionsOf(ref: string, side: RefSide | undefined): Region[] {
 // ---- the report -----------------------------------------------------------------------------------
 
 /**
- * Resolves every code reference of a model in the working tree and, given a base commit, at that
- * commit too; then says what happened to each and which references contain each changed line.
- * It reports facts only. What a difference means is the caller's business.
+ * Resolves every code reference of a model at the head (the working tree, or a head commit) and,
+ * given a base commit, at that commit too; then says what happened to each and which references
+ * contain each changed line. It reports facts only. What a difference means is the caller's business.
  */
 export async function codeReport(model: Model, profile: Profile, options: CodeReportOptions): Promise<CodeReport> {
 	// One entry per distinct reference, with everything in the model that carries it.
 	const owners = new Map<string, RefOwner[]>();
-	const own = (raw: string, owner: RefOwner) => {
-		const style = owner.change === undefined ? undefined : profile.changeStates[owner.change]?.style;
-		owners.set(raw, [...(owners.get(raw) ?? []), { ...owner, ...(style ? { style } : {}) }]);
+	// Owners the model says are removed; a part with no change state of its own has its element's.
+	const removed = new Set<RefOwner>();
+	const styleOf = (change: string | undefined) => (change === undefined ? undefined : profile.changeStates[change]?.style);
+	const own = (raw: string, owner: RefOwner, inherited?: string) => {
+		const style = styleOf(owner.change);
+		const stated = { ...owner, ...(style ? { style } : {}) };
+		if ((style ?? styleOf(inherited)) === 'removed') removed.add(stated);
+		owners.set(raw, [...(owners.get(raw) ?? []), stated]);
 	};
 	for (const e of model.elements) {
 		for (const raw of e.code ?? []) own(raw, { element: e.id, ...(e.change ? { change: e.change } : {}) });
-		for (const p of e.parts ?? []) for (const raw of p.code ?? []) own(raw, { element: e.id, part: p.title, ...(p.change ? { change: p.change } : {}) });
+		for (const p of e.parts ?? []) for (const raw of p.code ?? []) own(raw, { element: e.id, part: p.title, ...(p.change ? { change: p.change } : {}) }, e.change);
 	}
-	return report(owners, options, true);
+	return report(owners, options, true, (o) => removed.has(o));
 }
 
 /**
@@ -272,29 +291,33 @@ export async function codeReport(model: Model, profile: Profile, options: CodeRe
 export async function patternCodeReport(profile: Pick<Profile, 'patterns'>, options: CodeReportOptions): Promise<CodeReport<PatternOwner>> {
 	const owners = new Map<string, PatternOwner[]>();
 	for (const [id, p] of Object.entries(profile.patterns)) for (const raw of p.code ?? []) owners.set(raw, [...(owners.get(raw) ?? []), { pattern: id }]);
-	return report(owners, options, false);
+	return report(owners, options, false, () => false);
 }
 
-async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOptions, withChanges: boolean): Promise<CodeReport<Owner>> {
+/** `removed`: whether the owner is one the model says is removed, so its code need not be at the head. */
+async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOptions, withChanges: boolean, removed: (o: Owner) => boolean): Promise<CodeReport<Owner>> {
 	const root = options.root;
-	const base = options.base === undefined ? undefined : git(root, ['rev-parse', '--verify', `${options.base}^{commit}`]).trim();
+	const commit = (name: string | undefined) => (name === undefined ? undefined : git(root, ['rev-parse', '--verify', `${name}^{commit}`]).trim());
+	const base = commit(options.base);
+	const headCommit = commit(options.head);
+	const at = (rev: string) =>
+		new Side((path) => {
+			try {
+				return git(root, ['cat-file', 'blob', `${rev}:${path}`]);
+			} catch {
+				return undefined;
+			}
+		});
 
-	const head = new Side((path) => {
-		const file = join(root, path);
-		return existsSync(file) && statSync(file).isFile() ? readFileSync(file, 'utf8') : undefined;
-	});
-	const before =
-		base === undefined
-			? undefined
-			: new Side((path) => {
-					try {
-						return git(root, ['cat-file', 'blob', `${base}:${path}`]);
-					} catch {
-						return undefined;
-					}
-				});
+	const head = headCommit
+		? at(headCommit)
+		: new Side((path) => {
+				const file = join(root, path);
+				return existsSync(file) && statSync(file).isFile() ? readFileSync(file, 'utf8') : undefined;
+			});
+	const before = base === undefined ? undefined : at(base);
 
-	const changes = base === undefined ? undefined : changesSince(root, base);
+	const changes = base === undefined ? undefined : changesSince(root, base, headCommit);
 	const references: RefReport<Owner>[] = [];
 	const resolved = new Map<string, { ref: CodeRef; head: Resolved; base?: Resolved }>();
 
@@ -311,13 +334,18 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 
 		const unusable = [h, b].find((s) => s && (s.status === 'unsupported' || s.status === 'ambiguous'));
 		if (unusable) report.problem = unusable.detail;
+		else if (h.status !== 'resolved' && !b && who.every(removed))
+			// Removed code is not at the head, and with no base there is nowhere else to look for it.
+			report.head.detail = 'not looked for: its element is removed, and no base commit was given to find it at';
 		else if (h.status !== 'resolved' && (!b || b.status !== 'resolved'))
-			report.problem = `${h.status === 'missing-file' ? 'no such file' : 'no such definition'}${b ? ' at the base or in the working tree' : ''}${h.detail ? ` (${h.detail})` : ''}`;
+			report.problem = `${h.status === 'missing-file' ? 'no such file' : 'no such definition'}${b ? ` at the base or ${headCommit ? 'at the head' : 'in the working tree'}` : ''}${h.detail ? ` (${h.detail})` : ''}`;
 
 		if (b && !unusable) {
 			const [atHead, atBase] = [h.status === 'resolved', b.status === 'resolved'];
-			report.delta = atHead && atBase ? (h.text === b.text ? 'unchanged' : 'modified') : atHead ? 'added' : atBase ? 'removed' : 'missing';
-			if (atHead && atBase && h.commentText !== b.commentText) report.commentChanged = true;
+			const layoutOnly = atHead && atBase && h.text !== b.text && h.syntax !== undefined && h.syntax === b.syntax;
+			report.delta = atHead && atBase ? (h.text === b.text || layoutOnly ? 'unchanged' : 'modified') : atHead ? 'added' : atBase ? 'removed' : 'missing';
+			if (layoutOnly) report.layoutChanged = true;
+			if (atHead && atBase && trimLines(h.commentText!) !== trimLines(b.commentText!)) report.commentChanged = true;
 			if (atHead && atBase && ref.name) {
 				const through = await changedThrough(ref, h.definition!, head, before!);
 				if (through.length) report.changedThrough = through;
@@ -330,7 +358,7 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 		references.push(report);
 	}
 
-	const out: CodeReport<Owner> = { root, ...(base ? { base } : {}), references, problems: references.filter((r) => r.problem).length };
+	const out: CodeReport<Owner> = { root, ...(base ? { base } : {}), ...(headCommit ? { head: headCommit } : {}), references, problems: references.filter((r) => r.problem).length };
 	if (changes && withChanges) {
 		const regions = (path: string, side: 'head' | 'base') =>
 			[...resolved].filter(([, r]) => r.ref.path === path).flatMap(([raw, r]) => regionsOf(raw, r[side]));
@@ -347,11 +375,11 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 	return out;
 }
 
-const topLevel = (file: FileDefinitions | undefined) => new Map([...(file?.definitions ?? [])].filter(([name]) => !name.includes('.')));
+const topLevel = (file: FileDefinitions | undefined) => new Map([...(file?.definitions ?? [])].filter(([, def]) => def.path.length === 1));
 
 /**
  * Top-level definitions of the same file that `def` uses, directly or through other top-level
- * definitions, and whose text differs between the base and the working tree. Names are matched as
+ * definitions, and whose syntax differs between the base and the head. Names are matched as
  * written, so a local variable that shadows a top-level name counts as a use of it.
  */
 async function changedThrough(ref: CodeRef, def: Definition, head: Side, base: Side): Promise<string[]> {
@@ -365,13 +393,13 @@ async function changedThrough(ref: CodeRef, def: Definition, head: Side, base: S
 		const name = queue.pop()!;
 		if (seen.has(name) || (!now.has(name) && !then.has(name))) continue;
 		seen.add(name);
-		if (now.get(name)?.text !== then.get(name)?.text) changed.push(`${ref.path}#${name}`);
+		if (now.get(name)?.syntax !== then.get(name)?.syntax) changed.push(`${ref.path}#${name}`);
 		queue.push(...(now.get(name)?.uses ?? []));
 	}
 	return changed.sort();
 }
 
-/** For a reference that resolved at the base but not in the working tree: a rename in place, or a move to another changed file. */
+/** For a reference that resolved at the base but not at the head: a rename in place, or a move to another changed file. */
 async function whereItWent(ref: CodeRef, was: Resolved, head: Side, base: Side, changes: RawChange[]): Promise<RefHint[]> {
 	const hints: RefHint[] = [];
 	if (!ref.name) {
@@ -379,16 +407,15 @@ async function whereItWent(ref: CodeRef, was: Resolved, head: Side, base: Side, 
 		for (const c of changes) if (c.status === 'added' && c.path !== ref.path && head.content(c.path) === was.text) hints.push({ kind: 'moved', ref: c.path });
 		return hints;
 	}
-	const name = ref.name.join('.');
+	const name = joinName(ref.name);
 	const own = ref.name[ref.name.length - 1];
-	const parent = ref.name.slice(0, -1).join('.');
+	const parent = joinName(ref.name.slice(0, -1));
 	const now = (await head.definitions(ref.path))?.definitions;
 	const then = (await base.definitions(ref.path))?.definitions;
 	// Renamed in place: a definition with the same parent, new since the base, whose text is the old text under the new name.
 	for (const [candidate, def] of now ?? []) {
-		const dot = candidate.lastIndexOf('.');
-		if (candidate.slice(0, Math.max(dot, 0)) !== parent || then?.has(candidate)) continue;
-		if (was.text!.split(own).join(candidate.slice(dot + 1)) === def.text) hints.push({ kind: 'renamed', ref: `${ref.path}#${candidate}` });
+		if (joinName(def.path.slice(0, -1)) !== parent || then?.has(candidate)) continue;
+		if (was.text!.split(own).join(def.path[def.path.length - 1]) === def.text) hints.push({ kind: 'renamed', ref: `${ref.path}#${candidate}` });
 	}
 	// Moved: the same name, new since the base, in another file the change touched.
 	for (const c of changes) {

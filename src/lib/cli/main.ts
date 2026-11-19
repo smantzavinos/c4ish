@@ -20,8 +20,8 @@ Usage:
   c4ish render   <model.json> [--profile p.json] [--view id | --all] [--out file.svg] [--png] [--appendix]
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
   c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
-  c4ish code     <model.json> [--profile p.json] [--base commit] [--root dir] [--json]
-  c4ish code     <profile.json> [--base commit] [--root dir] [--json]
+  c4ish code     <model.json> [--profile p.json] [--base commit] [--head commit] [--root dir] [--json]
+  c4ish code     <profile.json> [--base commit] [--head commit] [--root dir] [--json]
   c4ish diff     <old.json> <new.json> [--only aspects] [--json] [--out review.json] [--profile p.json]
   c4ish diff     <model.json> --base commit [--only aspects] [--json] [--out review.json] [--profile p.json]
   c4ish profile  [profile.json]
@@ -40,8 +40,8 @@ view      Serves the offline viewer on localhost with this model (and profile) l
 code      Finds the code each element's "code" references name (path, path#Name, path#Outer.Inner),
           relative to --root (default: the git repository holding the model). With --base it also
           resolves them at that commit, says what changed in each, and lists every changed line with
-          the references that contain it. --json prints the full report. Exit 1 when a reference
-          cannot be used as written. Given a profile instead of a model, it does the same for the
+          the references that contain it. --head reads that commit in place of the working tree.
+          --json prints the full report. Exit 1 when a reference cannot be used as written. Given a profile instead of a model, it does the same for the
           reference implementations its patterns name ("code" on a pattern), without the list of
           changed lines.
 diff      Compares two versions of a model, item by item, matched by id. The earlier version is a
@@ -74,7 +74,7 @@ function parse(argv: string[]): Args {
 			const key = a.slice(2);
 			const next = argv[i + 1];
 			// --tour may stand alone (view: start the first tour)
-			const takes = ['profile', 'view', 'out', 'density', 'step', 'port', 'base', 'root', 'only'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
+			const takes = ['profile', 'view', 'out', 'density', 'step', 'port', 'base', 'head', 'root', 'only'].includes(key) || (key === 'tour' && !next?.startsWith('--') && !/\.json$/i.test(next ?? ''));
 			if (takes && next !== undefined) {
 				flags.set(key, next);
 				i++;
@@ -269,7 +269,7 @@ async function code(file: string, result: ReturnType<typeof check>, flags: Map<s
 		console.error(`${file} is not inside a git repository; pass --root <dir>`);
 		return 1;
 	}
-	const report = await codeReport(result.model, result.profile, { root, base: str('base') });
+	const report = await codeReport(result.model, result.profile, { root, base: str('base'), head: str('head') });
 	return printCodeReport(file, report, flags, (o) => (o.part ? `${o.element} / ${o.part}` : o.element));
 }
 
@@ -284,7 +284,7 @@ async function patternCode(file: string, flags: Map<string, string | true>): Pro
 		console.error(`${file} is not inside a git repository; pass --root <dir>`);
 		return 1;
 	}
-	const report = await patternCodeReport(resolveProfile(profile), { root, base: str('base') });
+	const report = await patternCodeReport(resolveProfile(profile), { root, base: str('base'), head: str('head') });
 	return printCodeReport(file, report, flags, (o) => `pattern ${o.pattern}`);
 }
 
@@ -295,14 +295,15 @@ function printCodeReport<Owner>(file: string, report: import('../code/report.js'
 		return report.problems ? 1 : 0;
 	}
 	const span = (side?: { extents?: { start: number; end: number }[] }) => (side?.extents ?? []).map((e) => `L${e.start}–${e.end}`).join(', ');
-	console.log(`${report.references.length} code reference(s) in ${root}${report.base ? `, ${report.base.slice(0, 10)} → working tree` : ''}`);
+	console.log(`${report.references.length} code reference(s) in ${root}${report.base ? `, ${report.base.slice(0, 10)} → ${report.head?.slice(0, 10) ?? 'working tree'}` : report.head ? `, at ${report.head.slice(0, 10)}` : ''}`);
 	for (const r of report.references) {
 		const state = r.problem ? 'PROBLEM' : (r.delta ?? r.head.status);
 		const where = span(r.head.status === 'resolved' ? r.head : r.base);
 		const who = r.owners.map(owner).join(', ');
 		console.log(`  ${state.padEnd(10)} ${r.ref}${where ? `  ${where}` : ''}  [${who}]`);
 		const more = [
-			r.problem,
+			r.problem ?? (r.head.status === 'resolved' || r.delta ? '' : r.head.detail),
+			r.layoutChanged ? 'only its layout changed' : '',
 			r.commentChanged ? 'the comment above it changed' : '',
 			r.changedThrough ? `changed through ${r.changedThrough.join(', ')}` : '',
 			...(r.hints ?? []).map((h) => `${h.kind} to ${h.ref}?`)
