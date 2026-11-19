@@ -316,3 +316,42 @@ describe('reference implementations of a profile\'s patterns', () => {
 		expect(report.unowned).toBeUndefined();
 	});
 });
+
+describe('a Svelte component', () => {
+	const component = (body: string, markup: string) => `<script lang="ts">\n\tlet open = $state(false);\n\n\t// toggles the list\n\tfunction toggle() {\n\t\t${body}\n\t}\n</script>\n\n${markup}\n`;
+	const WAS = component('open = !open;', '<button onclick={toggle}>Show</button>');
+
+	it('takes names into its script; a change to the markup alone leaves them unchanged and unowned', async () => {
+		const r = repo({ 'src/List.svelte': WAS });
+		r.write('src/List.svelte', component('open = !open;', '<button onclick={toggle}>Show all</button>'));
+		const report = await run(r, model({ list: ['src/List.svelte#toggle'] }));
+		expect(report.problems).toBe(0);
+		expect(report.references[0]).toMatchObject({ head: { status: 'resolved', extents: [{ kind: 'function', start: 5, end: 7, comment: { start: 4, end: 4 } }] }, delta: 'unchanged' });
+		expect(report.files).toEqual([{ path: 'src/List.svelte', status: 'modified', base: [{ start: 10, end: 10, refs: [] }], head: [{ start: 10, end: 10, refs: [] }] }]);
+		expect(report.unowned).toEqual({ files: 1, ranges: 2, lines: 2 });
+	});
+
+	it('says a function of its script changed, was added, or is not there', async () => {
+		const r = repo({ 'src/List.svelte': WAS });
+		r.write('src/List.svelte', component('open = true;', '<button onclick={toggle}>Show</button>').replace('</script>', '\tfunction close() {\n\t\topen = false;\n\t}\n</script>'));
+		const report = await run(r, model({ toggle: ['src/List.svelte#toggle'], close: ['src/List.svelte#close'], gone: ['src/List.svelte#missing'] }));
+		expect(report.references.map((x) => [x.ref, x.delta ?? x.problem])).toEqual([
+			['src/List.svelte#toggle', 'modified'],
+			['src/List.svelte#close', 'added'],
+			['src/List.svelte#missing', 'missing']
+		]);
+		expect(of(report, 'src/List.svelte#missing').problem).toBe('no such definition at the base or in the working tree');
+		expect(report.files![0].head.map((c) => c.refs.map((x) => x.ref))).toEqual([['src/List.svelte#toggle'], ['src/List.svelte#close']]);
+	});
+
+	it('still takes a whole-file reference, which owns the markup too', async () => {
+		const r = repo({ 'src/List.svelte': WAS });
+		r.write('src/List.svelte', component('open = !open;', '<button onclick={toggle}>Show all</button>'));
+		const report = await run(r, model({ list: ['src/List.svelte', 'src/List.svelte#toggle'] }));
+		expect(report.references.map((x) => [x.ref, x.delta])).toEqual([
+			['src/List.svelte', 'modified'],
+			['src/List.svelte#toggle', 'unchanged']
+		]);
+		expect(report.unowned).toEqual({ files: 0, ranges: 0, lines: 0 });
+	});
+});

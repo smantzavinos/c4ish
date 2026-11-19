@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { languageOf, parseDefinitions } from './definitions.js';
+import { languageOf, parseDefinitions, svelteScripts } from './definitions.js';
 import { isCodeRef, parseCodeRef } from './reference.js';
 
 const SOURCE = `// file header
@@ -66,7 +66,9 @@ describe('code reference text', () => {
 		expect(languageOf('a/b.tsx')).toBe('tsx');
 		expect(languageOf('a/b.mjs')).toBe('javascript');
 		expect(languageOf('a/b.json')).toBeUndefined();
-		expect(languageOf('a/b.svelte')).toBeUndefined();
+		expect(languageOf('a/b.svelte')).toBe('svelte');
+		expect(languageOf('a/b.svelte.ts')).toBe('typescript');
+		expect(languageOf('a/b.vue')).toBeUndefined();
 	});
 });
 
@@ -159,5 +161,82 @@ describe('named definitions', () => {
 		const r = await parseDefinitions('export const ok = 1;\nconst = ;\nfunction later() {}\n', 'typescript');
 		expect(r.parseErrors).toBe(true);
 		expect(r.definitions.has('ok')).toBe(true);
+	});
+});
+
+describe('Svelte components', () => {
+	const COMPONENT = `<!--
+	<script>const commentedOut = 1;</script>
+-->
+<script module lang="ts">
+	export const PAGE = 20;
+</script>
+
+<script lang="ts">
+	import Row from './Row.svelte';
+
+	let { items }: { items: Item[] } = $props();
+	let open = $state(false);
+
+	// @pattern web/list-page
+	function toggle() {
+		open = !open;
+	}
+
+	const helpers = {
+		label: (i: Item) => i.title
+	};
+</script>
+
+<button onclick={toggle}>{open ? 'Hide' : 'Show'}</button>
+{#if open}
+	{#each items as item}
+		<Row label={helpers.label(item)} />
+	{/each}
+{/if}
+
+<style>
+	button { color: red; }
+</style>
+`;
+	const component = async (source = COMPONENT) => parseDefinitions(source, 'svelte');
+
+	it('finds the definitions of the script blocks, on the lines they have in the component', async () => {
+		const { definitions, parseErrors } = await component();
+		expect(parseErrors).toBe(false);
+		// `items` is the property of the props type; the destructured props themselves have no one name
+		expect([...definitions.keys()].sort()).toEqual(['PAGE', 'helpers', 'helpers.label', 'items', 'open', 'toggle']);
+		expect(span(definitions.get('PAGE'))).toBe('5-5');
+		expect(span(definitions.get('toggle'))).toBe('15-17');
+		expect(definitions.get('toggle')!.extents[0].comment).toEqual({ start: 14, end: 14 });
+		expect(definitions.get('toggle')!.commentText).toBe('\t// @pattern web/list-page');
+		expect(definitions.get('toggle')!.text).toBe('function toggle() {\n\t\topen = !open;\n\t}');
+		expect(span(definitions.get('helpers.label'))).toBe('20-20');
+		expect(definitions.get('toggle')!.uses).toContain('open');
+	});
+
+	it('looks at nothing outside a script block: markup, styles and commented-out scripts have no names', async () => {
+		const { code } = svelteScripts(COMPONENT);
+		expect(code).toHaveLength(COMPONENT.length);
+		expect(code.split('\n')).toHaveLength(COMPONENT.split('\n').length);
+		expect(code).not.toContain('commentedOut');
+		expect(code).not.toContain('button');
+		expect(code).not.toContain('<script');
+		expect(code.split('\n')[14]).toBe('\tfunction toggle() {');
+	});
+
+	it('reads a script as TypeScript only when it says so', async () => {
+		expect(svelteScripts('<script lang="ts">let a: number = 1;</script>').lang).toBe('typescript');
+		expect(svelteScripts("<script context='module' lang=typescript>let a = 1;</script>").lang).toBe('typescript');
+		expect(svelteScripts('<script>let a = 1;</script>').lang).toBe('javascript');
+		expect(svelteScripts('<script data-lang="ts">let a = 1;</script>').lang).toBe('javascript');
+		const js = await component('<script>\n\texport function go() {}\n</script>\n<p>hi</p>\n');
+		expect(span(js.definitions.get('go'))).toBe('2-2');
+	});
+
+	it('a component with no script has no definitions', async () => {
+		const { definitions, parseErrors } = await component('<p>static</p>\n<script src="x.js" />\n');
+		expect(definitions.size).toBe(0);
+		expect(parseErrors).toBe(false);
 	});
 });

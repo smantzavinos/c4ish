@@ -4,8 +4,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser, type Node } from 'web-tree-sitter';
 
-/** Languages whose named definitions can be found. Any other file takes whole-file references only. */
-export type Lang = 'typescript' | 'tsx' | 'javascript';
+/** A language with a grammar. */
+type Grammar = 'typescript' | 'tsx' | 'javascript';
+
+/**
+ * Languages whose named definitions can be found. Any other file takes whole-file references only.
+ * `svelte` has no grammar of its own: the definitions of a component are those of its script blocks.
+ */
+export type Lang = Grammar | 'svelte';
 
 const EXTENSIONS: Record<string, Lang> = {
 	ts: 'typescript',
@@ -15,7 +21,8 @@ const EXTENSIONS: Record<string, Lang> = {
 	js: 'javascript',
 	mjs: 'javascript',
 	cjs: 'javascript',
-	jsx: 'javascript'
+	jsx: 'javascript',
+	svelte: 'svelte'
 };
 
 export function languageOf(path: string): Lang | undefined {
@@ -62,14 +69,14 @@ export interface FileDefinitions {
 
 // ---- grammars ---------------------------------------------------------------------------------
 
-const GRAMMARS: Record<Lang, [pkg: string, file: string]> = {
+const GRAMMARS: Record<Grammar, [pkg: string, file: string]> = {
 	typescript: ['tree-sitter-typescript', 'tree-sitter-typescript.wasm'],
 	tsx: ['tree-sitter-typescript', 'tree-sitter-tsx.wasm'],
 	javascript: ['tree-sitter-javascript', 'tree-sitter-javascript.wasm']
 };
 
 /** The grammar file: from the grammar's npm package in a source checkout, else `<package>/grammars/` as shipped. */
-function grammarFile(lang: Lang): string {
+function grammarFile(lang: Grammar): string {
 	const [pkg, file] = GRAMMARS[lang];
 	try {
 		return createRequire(import.meta.url).resolve(`${pkg}/${file}`);
@@ -86,9 +93,9 @@ function grammarFile(lang: Lang): string {
 }
 
 let ready: Promise<void> | undefined;
-const parsers = new Map<Lang, Promise<Parser>>();
+const parsers = new Map<Grammar, Promise<Parser>>();
 
-function parserFor(lang: Lang): Promise<Parser> {
+function parserFor(lang: Grammar): Promise<Parser> {
 	let p = parsers.get(lang);
 	if (!p) {
 		p = (async () => {
@@ -188,8 +195,43 @@ interface Found {
 	extents: Extent[];
 }
 
+// ---- Svelte components ------------------------------------------------------------------------------
+
+/**
+ * An HTML comment, or a script tag with its attributes and content. It is the expression Svelte's
+ * own preprocessor finds script blocks with, so what counts as one here is what counts as one there.
+ */
+const SCRIPT_TAG = /<!--[^]*?-->|<script((?:\s+[^=>'"/\s]+(?:=(?:"[^"]*"|'[^']*'|[^>\s]+))?)*\s*)(?:\/>|>([\S\s]*?)<\/script>)/g;
+const CLOSE_TAG = '</script>';
+const TYPESCRIPT = /(?:^|\s)lang\s*=\s*["']?(?:ts|typescript)["']?(?:\s|$)/;
+
+/**
+ * The script blocks of a Svelte component as one source text: everything outside them is blanked,
+ * character for character, so every line and column is where it is in the component. Markup has no
+ * names to find, so nothing in it is a definition.
+ */
+export function svelteScripts(source: string): { code: string; lang: Grammar } {
+	const blank = (text: string) => text.replace(/[^\n\r]/g, ' ');
+	let code = '';
+	let at = 0;
+	let typescript = false;
+	for (const m of source.matchAll(SCRIPT_TAG)) {
+		const content = m[2];
+		if (content === undefined) continue; // a comment, or a self-closing tag
+		const start = m.index + m[0].length - CLOSE_TAG.length - content.length;
+		code += blank(source.slice(at, start)) + content;
+		at = start + content.length;
+		if (TYPESCRIPT.test(m[1] ?? '')) typescript = true;
+	}
+	return { code: code + blank(source.slice(at)), lang: typescript ? 'typescript' : 'javascript' };
+}
+
 /** Finds every named definition in a source file. */
 export async function parseDefinitions(source: string, lang: Lang): Promise<FileDefinitions> {
+	if (lang === 'svelte') {
+		const scripts = svelteScripts(source);
+		return parseDefinitions(scripts.code, scripts.lang);
+	}
 	const parser = await parserFor(lang);
 	const tree = parser.parse(source);
 	if (!tree) throw new Error('the parser returned no tree');

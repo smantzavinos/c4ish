@@ -65,7 +65,7 @@ A model describes **one planned change** and the unchanged context it touches. I
 - **Paths** are relative to the repository root.
 - **A name is the full chain** of named definitions around it, outermost first. Unnamed wrappers, such as a call's arguments, are skipped. When a short name doesn't resolve, `c4ish code` suggests the full one.
 - **Several references** go on an element that spans several definitions or files.
-- **Names resolve in TypeScript and JavaScript** (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`). Any other file takes a whole-file reference.
+- **Names resolve in TypeScript and JavaScript** (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`), and in the script blocks of a Svelte component (`.svelte`): `src/List.svelte#toggle`. A component's markup and styles have no names; a whole-file reference covers them. Any other file takes a whole-file reference.
 - **One name declared several times in one place** (overloads, a `const` and a `type`) is one definition. The same name in two different places is ambiguous: qualify it.
 - **A whole-file reference** stands for whatever the named references into that file don't cover.
 
