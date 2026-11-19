@@ -451,10 +451,13 @@ async function writeTours(file: string, result: ReturnType<typeof check>, flags:
 	return uncovered && flags.has('strict') ? 1 : 0;
 }
 
-main(process.argv.slice(2)).then(
-	(code) => process.exit(code),
-	(e) => {
-		console.error(`c4ish: ${(e as Error).message}`);
-		process.exit(2);
-	}
-);
+/** Exit once what was printed is out: on a pipe, output still queued is lost by an immediate exit. */
+function exit(code: number): void {
+	process.exitCode = code;
+	process.stdout.write('', () => process.stderr.write('', () => process.exit(code)));
+}
+
+main(process.argv.slice(2)).then(exit, (e) => {
+	console.error(`c4ish: ${(e as Error).message}`);
+	exit(2);
+});
