@@ -46,6 +46,18 @@ describe('tour rendering', () => {
 		expect(ex.markdown).toContain('#tour=review&step=page-read');
 	});
 
+	it('says which scenarios a step walks in the caption, the slideshow and the markdown', async () => {
+		const { model, profile } = await example('paged-reads');
+		const tour = structuredClone(model.tours![0]);
+		tour.steps[1].scenarios = ['S1'];
+		const walked = { ...model, scenarios: [{ id: 'S1', title: 'Read <one> page' }], tours: [tour] };
+		const ex = await exportTour(walked, profile, tour);
+		expect(ex.steps[1].svg).toContain('Walks: S1 Read &lt;one&gt; page');
+		expect(ex.html).toContain('<p>Walks: <strong>S1</strong> Read &lt;one&gt; page</p>');
+		expect(ex.markdown).toContain('Walks: **S1** Read <one> page');
+		expect(ex.steps[0].svg).not.toContain('Walks:');
+	});
+
 	it('keeps badges readable when the page is large or the viewer zoomed out', () => {
 		expect(staticBadgeScale(900, 800)).toBe(1);
 		expect(staticBadgeScale(2100, 2400)).toBeCloseTo(2);

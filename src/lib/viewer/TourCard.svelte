@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Tour } from '../model/types.js';
+	import type { Scenario, Tour } from '../model/types.js';
 	import type { DiagramNote } from '../render/diagram.js';
 	import { narrationHtml } from './tour.js';
 
@@ -8,6 +8,7 @@
 		index,
 		exploring,
 		notes,
+		scenarios = [],
 		onprev,
 		onnext,
 		ongoto,
@@ -19,6 +20,8 @@
 		exploring: boolean;
 		/** Notes of the current view the step spotlights. */
 		notes: DiagramNote[];
+		/** Scenarios the current step walks. */
+		scenarios?: Scenario[];
 		onprev: () => void;
 		onnext: () => void;
 		ongoto: (i: number) => void;
@@ -39,6 +42,12 @@
 	<div class="count">{index + 1} / {total}</div>
 	<h2>{step.title}</h2>
 	<div class="body">{@html narrationHtml(step.body)}</div>
+
+	{#if scenarios.length}
+		<ul class="scenarios" aria-label="Scenarios this step walks">
+			{#each scenarios as s (s.id)}<li><span class="sid">{s.id}</span> {s.title}</li>{/each}
+		</ul>
+	{/if}
 
 	{#each notes as n (n.num)}
 		<div class="note {n.note.kind ?? 'note'}">
@@ -127,6 +136,19 @@
 		background: #e2e8f0;
 		padding: 0 4px;
 		border-radius: 3px;
+	}
+	.scenarios {
+		list-style: none;
+		margin: 8px 0;
+		padding: 6px 10px;
+		border-left: 3px solid #2563eb;
+		background: #eff6ff;
+		font-size: 12.5px;
+	}
+	.sid {
+		font-weight: 700;
+		color: #1d4ed8;
+		margin-right: 4px;
 	}
 	.note {
 		border: 1px solid #e2e8f0;

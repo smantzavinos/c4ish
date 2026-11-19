@@ -3,7 +3,7 @@ import type { Model, Note, Profile } from '../model/types.js';
 import { FONT_FAMILY, measure, wrap } from '../text/measure.js';
 import { buildDiagram, diagramBodySvg, type Diagram } from './diagram.js';
 import { renderLegendSvg } from './legend.js';
-import { numberDisc } from './node.js';
+import { bespokeReasons, numberDisc } from './node.js';
 import type { Scene } from './scene.js';
 import { staticBadgeScale, stepBodySvg, TOUR } from './tour.js';
 import type { FilterState } from '../viewer/state.js';
@@ -179,7 +179,7 @@ export function renderAppendix(d: Diagram): string {
 		for (const [id, tag] of d.detailTags) {
 			const e = scene.elementsById.get(id)!;
 			lines.push(`### ${tag} · ${e.title}`, '');
-			for (const t of Array.isArray(e.details) ? e.details : [e.details!]) lines.push(`- ${t}`);
+			for (const t of [...bespokeReasons(e), ...(Array.isArray(e.details) ? e.details : e.details ? [e.details] : [])]) lines.push(`- ${t}`);
 			lines.push('');
 		}
 	}

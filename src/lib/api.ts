@@ -1,5 +1,5 @@
 import type { Model, Profile, ProfileInput } from './model/types.js';
-import { validateModel, validateModelSchema, validateProfileSchema, type Diagnostic } from './model/validate.js';
+import { validateModel, validateModelSchema, validateProfile, validateProfileSchema, type Diagnostic } from './model/validate.js';
 import { resolveProfile } from './profile/resolve.js';
 
 export interface CheckResult {
@@ -19,6 +19,7 @@ export function check(modelJson: unknown, profileJson?: unknown): CheckResult {
 	diagnostics.push(...validateModelSchema(modelJson));
 	if (diagnostics.some((d) => d.severity === 'error')) return { ok: false, diagnostics };
 	const profile = resolveProfile((profileJson as ProfileInput | undefined) ?? null);
+	if (profileJson) diagnostics.push(...validateProfile(profileJson as ProfileInput));
 	const model = modelJson as Model;
 	diagnostics.push(...validateModel(model, profile));
 	return { ok: !diagnostics.some((d) => d.severity === 'error'), diagnostics, model, profile };

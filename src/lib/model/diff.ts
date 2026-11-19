@@ -7,7 +7,8 @@ import type { Model, Note, Part, Tie } from './types.js';
  * reader can keep what the model *says* apart from how it reads or is shown:
  *
  *   structure     what the design is: kinds, parents, patterns, change states, data shape,
- *                 enforcement, relationships and their ends, contract clauses, absences
+ *                 enforcement, relationships and their ends, contract clauses, absences,
+ *                 which scenarios there are
  *   text          titles, labels and descriptions
  *   code          code references
  *   presentation  views, tours, per-view restrictions, icons and colours
@@ -19,7 +20,7 @@ import type { Model, Note, Part, Tie } from './types.js';
 export type Aspect = 'structure' | 'text' | 'code' | 'presentation' | 'provenance';
 export const ASPECT_NAMES: Aspect[] = ['structure', 'text', 'code', 'presentation', 'provenance'];
 
-export type ItemKind = 'model' | 'element' | 'relationship' | 'contract' | 'note' | 'absence' | 'pattern' | 'view' | 'tour';
+export type ItemKind = 'model' | 'element' | 'relationship' | 'contract' | 'note' | 'absence' | 'pattern' | 'scenario' | 'view' | 'tour';
 export type DeltaKind = 'added' | 'removed' | 'changed';
 
 export interface FieldDifference {
@@ -72,7 +73,12 @@ interface Members {
 	key: (member: never, index: number) => string;
 }
 type MemberKind = 'field' | 'index' | 'tie' | 'part' | 'clause';
-type PropertyTable = Record<string, Aspect | Members>;
+/** An aspect that depends on the two values (either may be missing). */
+type Decide = (was: unknown, is: unknown) => Aspect;
+type PropertyTable = Record<string, Aspect | Members | Decide>;
+
+/** Becoming or ceasing to be bespoke is structure; rewording the reason is text. */
+const bespoke: Decide = (was, is) => (was === undefined || is === undefined ? S : T);
 
 export const tieKey = (t: Tie): string => t.id ?? [...t.fields].sort().join('~');
 export const partKey = (p: Part): string => p.id ?? p.title;
@@ -100,6 +106,7 @@ export const ASPECTS: Record<ItemKind | Exclude<MemberKind, 'clause'>, PropertyT
 		details: T,
 		pattern: S,
 		patternFit: S,
+		bespoke,
 		patterns: S,
 		change: S,
 		lifecycle: S,
@@ -120,7 +127,7 @@ export const ASPECTS: Record<ItemKind | Exclude<MemberKind, 'clause'>, PropertyT
 	field: { title: T, type: S, change: S, note: T },
 	index: { fields: S, change: S },
 	tie: { fields: S, label: T, enforcement: S, change: S, divergence: S },
-	part: { title: T, pattern: S, change: S, code: C },
+	part: { title: T, pattern: S, patternFit: S, bespoke, change: S, code: C },
 	relationship: {
 		from: S,
 		to: S,
@@ -147,8 +154,10 @@ export const ASPECTS: Record<ItemKind | Exclude<MemberKind, 'clause'>, PropertyT
 		icon: P,
 		colour: P,
 		catalog: T,
-		description: T
+		description: T,
+		code: C
 	},
+	scenario: { title: T },
 	view: {},
 	tour: {}
 };
@@ -161,6 +170,7 @@ const UNORDERED = new Set([
 	'element.code',
 	'element.views',
 	'part.code',
+	'pattern.code',
 	'tie.fields',
 	'relationship.views',
 	'note.views',
@@ -168,7 +178,7 @@ const UNORDERED = new Set([
 ]);
 
 /** Values a missing property stands for. */
-const DEFAULTS: Record<string, unknown> = { 'element.patternFit': 'full' };
+const DEFAULTS: Record<string, unknown> = { 'element.patternFit': 'full', 'part.patternFit': 'full' };
 
 /** Whether a note is a review item (structure) or a remark (text). */
 const noteAspect = (n: Note | undefined): Aspect => (n?.kind === 'risk' || n?.kind === 'question' ? S : T);
@@ -215,7 +225,7 @@ function compareProperties(table: keyof typeof ASPECTS, before: Bag, after: Bag,
 		if (name === 'id' && table !== 'model') continue;
 		const spec = props[name] ?? fallback ?? S;
 		const path = [...base, name];
-		if (typeof spec !== 'string') {
+		if (typeof spec === 'object') {
 			out.push(...compareMembers(spec, before[name], after[name], path));
 			continue;
 		}
@@ -226,7 +236,7 @@ function compareProperties(table: keyof typeof ASPECTS, before: Bag, after: Bag,
 		if (same(was, is, UNORDERED.has(`${table}.${name}`))) continue;
 		out.push({
 			path,
-			aspect: spec,
+			aspect: typeof spec === 'function' ? spec(was, is) : spec,
 			change: was === undefined ? 'added' : is === undefined ? 'removed' : 'changed',
 			...(was !== undefined && { before: was }),
 			...(is !== undefined && { after: is })
@@ -341,6 +351,7 @@ export function diffModels(before: Model, after: Model): ModelDiff {
 	collection('relationship', before.relationships, after.relationships, ids);
 	collection('contract', before.contracts, after.contracts, ids);
 	collection('pattern', before.proposedPatterns, after.proposedPatterns, ids);
+	collection('scenario', before.scenarios, after.scenarios, ids);
 	collection('absence', before.absences, after.absences, ids);
 	collection('note', before.notes, after.notes, noteKeys);
 	collection('view', before.views, after.views, ids);

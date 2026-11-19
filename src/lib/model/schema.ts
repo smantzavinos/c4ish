@@ -21,6 +21,8 @@ const direction = { enum: ['right', 'down', 'left', 'up', 'auto'] };
 const lineStyle = { enum: ['solid', 'dashed', 'dotted', 'long-dash', 'double'] };
 const colour = { type: 'string', pattern: '^#[0-9a-fA-F]{3,8}$' };
 const severity = { enum: ['error', 'warning', 'off'] };
+const reason = { type: 'string', minLength: 1 };
+const patternFit = { enum: ['full', 'partial'] };
 
 const patternDef = {
 	type: 'object',
@@ -34,7 +36,8 @@ const patternDef = {
 		icon: text,
 		colour,
 		catalog: text,
-		description: text
+		description: text,
+		code: { type: 'array', items: text }
 	}
 };
 
@@ -88,7 +91,8 @@ export const modelSchema = {
 					subtitle: text,
 					details: textOrLines,
 					pattern: { anyOf: [text, { type: 'null' }] },
-					patternFit: { enum: ['full', 'partial'] },
+					patternFit,
+					bespoke: reason,
 					patterns: { type: 'array', items: text },
 					change: text,
 					lifecycle: text,
@@ -135,7 +139,7 @@ export const modelSchema = {
 							type: 'object',
 							required: ['title'],
 							additionalProperties: false,
-							properties: { id, title: text, pattern: { anyOf: [text, { type: 'null' }] }, change: text, code: { type: 'array', items: text } }
+							properties: { id, title: text, pattern: { anyOf: [text, { type: 'null' }] }, patternFit, bespoke: reason, change: text, code: { type: 'array', items: text } }
 						}
 					},
 					divergence,
@@ -246,7 +250,8 @@ export const modelSchema = {
 										patterns: { type: 'array', items: id },
 										change: { type: 'array', items: id },
 										enforcement: { type: 'array', items: id },
-										proposed: { type: 'boolean' }
+										proposed: { type: 'boolean' },
+										bespoke: { type: 'boolean' }
 									}
 								},
 								path: {
@@ -260,11 +265,21 @@ export const modelSchema = {
 								},
 								notes: { type: 'array', items: id },
 								dimOthers: { type: 'boolean' },
-								onlyChanges: { type: 'boolean' }
+								onlyChanges: { type: 'boolean' },
+								scenarios: { type: 'array', items: id }
 							}
 						}
 					}
 				}
+			}
+		},
+		scenarios: {
+			type: 'array',
+			items: {
+				type: 'object',
+				required: ['id', 'title'],
+				additionalProperties: false,
+				properties: { id, title: text }
 			}
 		}
 	}
@@ -294,7 +309,8 @@ export const profileSchema = {
 				role: { enum: ['element', 'library'] },
 				icon: text,
 				area: text,
-				parents: { type: 'array', items: text }
+				parents: { type: 'array', items: text },
+				category: { enum: ['container', 'code', 'data', 'product'] }
 			}
 		}),
 		patternFamilies: record({
@@ -379,6 +395,7 @@ export const profileSchema = {
 				textBudget: severity,
 				removedWithLiveEdges: severity,
 				tourCoverage: severity,
+				missingPattern: severity,
 				titleMaxChars: { type: 'integer' },
 				subtitleMaxChars: { type: 'integer' },
 				labelMaxChars: { type: 'integer' }

@@ -28,6 +28,16 @@ export interface Model {
 	proposedPatterns?: PatternDef[];
 	/** Scripted review walkthroughs across the views (usually one). */
 	tours?: Tour[];
+	/**
+	 * What the change must make possible, by id and title only (the rest stays in the plan text).
+	 * Tour steps name the scenarios they walk; a scenario no step walks is reported.
+	 */
+	scenarios?: Scenario[];
+}
+
+export interface Scenario {
+	id: string;
+	title: string;
 }
 
 /**
@@ -63,6 +73,8 @@ export interface TourStep {
 	dimOthers?: boolean;
 	/** Hide reused context (the viewer's "Only changes"). */
 	onlyChanges?: boolean;
+	/** Ids of the scenarios this step walks. Shown under the narration. */
+	scenarios?: string[];
 }
 
 export interface TourHighlight {
@@ -74,6 +86,8 @@ export interface TourHighlight {
 	enforcement?: string[];
 	/** Every element whose pattern is proposed (in `proposedPatterns`). */
 	proposed?: boolean;
+	/** Every element that is bespoke, or has a bespoke part. */
+	bespoke?: boolean;
 }
 
 /** A relationship id, or an intentional gap between two contiguous runs. */
@@ -115,6 +129,11 @@ export interface Element {
 	pattern?: string | null;
 	/** How well the element follows its pattern. Default "full". */
 	patternFit?: 'full' | 'partial';
+	/**
+	 * A one-off that follows no pattern on purpose: the reason, in one line. Stands in place of
+	 * `pattern` (never beside it) and is drawn and reviewed as its own state.
+	 */
+	bespoke?: string;
 	/** Additional patterns that apply (e.g. data patterns on a table). */
 	patterns?: string[];
 	/** Change state id from the profile (new, modified, reused, removed). Missing = lint warning, drawn as reused. */
@@ -182,6 +201,10 @@ export interface Part {
 	id?: string;
 	title: string;
 	pattern?: string | null;
+	/** How well the part follows its pattern. Default "full". */
+	patternFit?: 'full' | 'partial';
+	/** A one-off part: the reason, in one line (see `Element.bespoke`). */
+	bespoke?: string;
 	change?: string;
 	/** Where this part lives in the repository (see `Element.code`). */
 	code?: string[];
@@ -274,7 +297,15 @@ export interface ElementKindDef {
 	area?: string;
 	/** Allowed parent kinds (omit = any). */
 	parents?: string[];
+	/**
+	 * What an element of this kind is: a `container` that holds others, `code`, `data`, or a
+	 * `product` concept. Omit for a kind that is none of these (a person, an external system).
+	 * Code and data are expected to state a pattern or to be bespoke (`rules.missingPattern`).
+	 */
+	category?: KindCategory;
 }
+
+export type KindCategory = 'container' | 'code' | 'data' | 'product';
 
 export interface PatternFamilyDef {
 	label: string;
@@ -293,6 +324,8 @@ export interface PatternDef {
 	colour?: string;
 	catalog?: string;
 	description?: string;
+	/** The pattern's reference implementation: code references, as on an element (`Element.code`). */
+	code?: string[];
 }
 
 export interface RelationshipKindDef {
@@ -363,6 +396,8 @@ export interface LintRules {
 	removedWithLiveEdges?: Severity;
 	/** Tour coverage: changed / proposed / risk / divergence items no step shows. Default warning. */
 	tourCoverage?: Severity;
+	/** A new or modified element of a code or data kind that states neither a pattern nor `bespoke`. */
+	missingPattern?: Severity;
 	titleMaxChars?: number;
 	subtitleMaxChars?: number;
 	labelMaxChars?: number;

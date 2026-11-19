@@ -31,6 +31,7 @@ A model describes **one planned change** and the unchanged context it touches. I
 | `absences` | Things deliberately not built, stated where they would be |
 | `proposedPatterns` | Patterns this change introduces that the profile doesn't have yet |
 | `tours` | The guided review; one tour with id `review` is expected |
+| `scenarios` | What the change must make possible, as `{ "id", "title" }`. Each must be walked by a tour step |
 
 ## Elements
 
@@ -45,7 +46,7 @@ A model describes **one planned change** and the unchanged context it touches. I
 - **`change`** is required on everything: `new`, `modified`, `reused` (unchanged context) or `removed`. Keep removed items in the model; they are drawn struck through.
 - **`title`** is at most 40 characters and **`subtitle`** at most 64. Longer text goes in `details`, which the viewer shows in the side panel.
 - **Data elements** can list `fields` and `indexes`, each with its own `change`. A `tie` joins two fields that must agree.
-- **`parts`** are grouped members with their own `pattern` and `change`. Give a part or a tie an `id` when its title or its fields may change later (see Comparing two versions).
+- **`parts`** are grouped members with their own `pattern` (or `bespoke`), `patternFit` and `change`. Give a part or a tie an `id` when its title or its fields may change later (see Comparing two versions).
 - **Libraries** are elements of kind `library`. A component names the ones it uses in `libraries`.
 - **Product concepts** name the elements that implement them in `implementedBy`.
 - **`code`** lists where the element lives in the repository (see Code references).
@@ -82,19 +83,23 @@ With `--base`, each reference is `added`, `removed`, `modified` or `unchanged`:
 
 ## Patterns
 
-Every component and data element says which project pattern it follows.
+Every element that is code or data says which project pattern it follows, or that it is a one-off. `validate` warns when a new or modified one says neither (`missing-pattern`). Which kinds are code or data is the kind's `category` in the profile; in the default profile `component` is code and `data` is data.
 
 | Case | Write |
 |---|---|
 | Follows a pattern in the profile | `"pattern": "api/read-query"` |
 | Follows it only in part | add `"patternFit": "partial"`, and say what differs in `details` |
-| Several members with their own patterns | `"parts": [{ "title": "…", "pattern": "…", "change": "…" }]` |
+| A one-off that follows no pattern | `"bespoke": "<why, in one line>"` instead of `pattern`. Drawn as `BESPOKE`; the reason is in the side panel and the appendix |
+| Several members with their own patterns | `"parts": [{ "title": "…", "pattern": "…", "change": "…" }]`. A part takes `patternFit` and `bespoke` too |
 | More than one pattern applies | `"patterns": ["data/tenant-scoped"]` beside the main one |
 | A new pattern | add it to `proposedPatterns` and reference its id; it is drawn hatched |
-| Deliberately no pattern | `"pattern": null` |
+| No pattern applies, and it is not a one-off worth a reason (unchanged context, a stub) | `"pattern": null` |
 | Code that departs from its declared pattern | `"divergence": { "id": "DV-1", "text": "…" }` on the element or connector |
 
 A proposed pattern is `{ "id": "api/bounded-read", "label": "bounded read", "family": "api" }`. The family must exist in the profile.
+
+- **`bespoke` and `pattern` exclude each other.** `patterns` (further patterns) may stand beside either.
+- **A pattern can name its reference implementation:** `"code": ["src/notes/list.ts#listNotes"]` on a pattern, in the profile or in `proposedPatterns`, written like any code reference. `c4ish code <profile.json>` checks the ones in a profile.
 
 ## Relationships
 
@@ -131,14 +136,17 @@ A tour is an ordered list of steps. Each step is a view plus what is lit, with a
 | `select` | Selects one element or connector and opens its details |
 | `path` | Ordered connector ids, numbered on the drawing |
 | `notes` | Note ids to show |
-| `highlight` | Lights by `change`, `patterns`, `enforcement` or `proposed`. For overview steps |
+| `highlight` | Lights by `change`, `patterns`, `enforcement`, `proposed` or `bespoke`. For overview steps |
+| `scenarios` | Ids of the scenarios this step walks. They are shown under the narration |
 
-**Coverage.** Every new, modified or removed element, every element with a proposed pattern, every risk note and every divergence must be pointed at by some step. Only these count:
+**Coverage.** Every new, modified or removed element, every element with a proposed pattern, every new or modified bespoke element, every risk note and every divergence must be pointed at by some step. Only these count:
 - `focus` or `select` covers that element, or that connector and its two ends. A frame's children are not covered;
 - `path` covers its connectors, their ends and the frames those ends sit in;
 - `notes` covers the note and what it is on.
 
 `highlight` and `onlyChanges` never count.
+
+**Scenarios.** List what the change must make possible in the model's `scenarios`, by id and title only; the detail stays in the plan text. A step names the scenarios it walks in its own `scenarios`. A scenario that no step of any tour names is reported (`scenario-coverage`), so `validate --strict` fails until every scenario is shown.
 
 **Paths must be contiguous.** Each connector starts where the last one ended. Write an intended gap as `{ "jump": true, "text": "later" }`.
 
@@ -158,16 +166,30 @@ Items are matched by **id**, so ids must not change between versions. An item is
 
 | Aspect | Holds |
 |---|---|
-| `structure` | What the design is: kind, parent, change state, patterns and fit, libraries, lifecycle, fields, indexes, ties and their enforcement, parts, relationship ends, kind, enforcement and contract, contract clauses, absences, proposed patterns, and risk and question notes with what they are on |
-| `text` | Titles, subtitles, labels, details, and the wording of notes. A plain remark is text as a whole |
-| `code` | Code references |
+| `structure` | What the design is: kind, parent, change state, patterns and fit, becoming or ceasing to be bespoke, which scenarios there are, libraries, lifecycle, fields, indexes, ties and their enforcement, parts, relationship ends, kind, enforcement and contract, contract clauses, absences, proposed patterns, and risk and question notes with what they are on |
+| `text` | Titles, subtitles, labels, details, the reason an item is bespoke, a scenario's title, and the wording of notes. A plain remark is text as a whole |
+| `code` | Code references, on elements, parts and proposed patterns |
 | `presentation` | Views, tours, per-view restrictions, icons and colours |
 | `provenance` | The model's `id` and `provenance` |
 
 - **Members are matched by name too.** A field or an index by its `id`; a tie by its `id`, or else by its pair of fields; a part by its `id`, or else by its title. Without an id, a retitled part reads as one part removed and another added.
 - **A note without an id** is matched by what it is on, its kind and its rank among those. Give a note an id to keep it stable.
 - **Order doesn't matter,** except the fields of an index.
-- **The review model** from `--out` is the later version with its tours replaced by one generated tour: an overview, then one step per item that differs. An element or relationship that is gone is put back and drawn where it was, marked `DROPPED`: red dashed border, title struck through. The tool marks it with `revision: "removed"`; do not write that yourself. Anything else that is gone (a contract, a note, a field, a part) is described in words, with the place it was spotlit. It honours `--only`. It is for viewing; its tour does not try to pass tour coverage.
+- **The review model** from `--out` is the later version with its tours replaced by one generated tour: an overview, then one step per item that differs. An element or relationship that is gone is put back and drawn where it was, marked `DROPPED`: red dashed border, title struck through. The tool marks it with `revision: "removed"`; do not write that yourself. Anything else that is gone (a contract, a note, a field, a part) is described in words, with the place it was spotlit. It honours `--only`. It is for viewing; its tour does not try to pass tour coverage, and it leaves the scenarios out.
+
+## The profile
+
+A project profile holds the vocabulary a model draws on: element kinds, the pattern catalog, relationship kinds, enforcement, change states and the lint rules. `"extends": "default"` adds to the built-in one.
+
+```bash
+c4ish profile                      # the default profile, as JSON
+c4ish profile profile.c4ish.json   # that file as c4ish reads it, with the default merged in
+c4ish code profile.c4ish.json      # do the patterns' reference implementations resolve? (--base says what changed in each)
+```
+
+- **An element kind states its `category`:** `container` (holds others), `code`, `data` or `product` (a product concept). Leave it out for a kind that is none of these, such as a person or an external system.
+- **A pattern can name its reference implementation** in `code`, as code references.
+- **`rules.missingPattern`** sets how a new or modified code or data element with neither a pattern nor `bespoke` is reported: `warning` (default), `error` or `off`.
 
 ## Example
 
@@ -218,6 +240,10 @@ A complete model on the default profile. It validates with no warnings.
       "clauses": { "args": "orderId", "returns": "notes, newest first, at most 50", "access": "staff of the order's tenant" }
     }
   ],
+  "scenarios": [
+    { "id": "S1", "title": "Staff read the notes of an order" },
+    { "id": "S2", "title": "Staff add a note to an order" }
+  ],
   "notes": [
     { "id": "n-delete", "on": "notes", "kind": "risk", "title": "No delete yet", "text": "A note cannot be removed in this change." }
   ],
@@ -228,12 +254,12 @@ A complete model on the default profile. It validates with no warnings.
       "steps": [
         {
           "id": "read", "view": "engineering", "title": "Reading notes",
-          "path": ["pageList", "listReads", "noteOrder"],
+          "path": ["pageList", "listReads", "noteOrder"], "scenarios": ["S1"],
           "body": "The order page subscribes to `notes.list`, which reads the new table. Each note references its order."
         },
         {
           "id": "write", "view": "engineering", "title": "Adding a note",
-          "path": ["pageAdd", "addWrites"], "select": "addNote",
+          "path": ["pageAdd", "addWrites"], "select": "addNote", "scenarios": ["S2"],
           "body": "The page submits to `notes.add`, which writes one row."
         },
         {
@@ -257,6 +283,8 @@ A complete model on the default profile. It validates with no warnings.
 - **A connector with no enforcement** on a data kind (`missing-enforcement`).
 - **An element with no `change`**. It is drawn as reused and lint warns.
 - **A tour that lights changes only with `highlight`**. Coverage then lists them as uncovered.
+- **A scenario no step names.** Add its id to the `scenarios` of the step that shows it.
+- **`bespoke` beside `pattern`.** An element is one or the other. For a pattern followed in part, use `patternFit`.
 - **A removed element that still has live connectors.** Mark those connectors removed too.
 - **Titles that carry the explanation.** Keep the title a name; put the explanation in `subtitle`, `details` or a note.
 - **A code reference by short name.** `schema.ts#notes` doesn't find a property of `tables`; write `schema.ts#tables.notes`.

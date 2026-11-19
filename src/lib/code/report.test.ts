@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Element, Model } from '../model/types.js';
 import { defaultProfile } from '../profile/default.js';
 import { resolveProfile } from '../profile/resolve.js';
-import { codeReport, parseDiff, type ChangedLines, type CodeReport } from './report.js';
+import { codeReport, parseDiff, patternCodeReport, type ChangedLines, type CodeReport } from './report.js';
 
 const profile = resolveProfile(defaultProfile);
 const made: string[] = [];
@@ -273,5 +273,46 @@ describe('reading a diff', () => {
 				head: [{ start: 3, end: 4 }]
 			}
 		]);
+	});
+});
+
+describe('reference implementations of a profile\'s patterns', () => {
+	const catalog = (patterns: Record<string, string[]>) =>
+		resolveProfile({
+			profileVersion: 0,
+			id: 'p',
+			title: 'P',
+			extends: 'default',
+			patterns: Object.fromEntries(Object.entries(patterns).map(([id, code]) => [id, { label: id, family: 'api', code }]))
+		});
+
+	it('resolves each, owned by its pattern; patterns without one are left out', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		const report = await patternCodeReport(catalog({ 'api/table': ['src/schema.ts#tables.apis'], 'api/helper': ['src/schema.ts#helper', 'src/schema.ts#tables.apis'] }), { root: r.root });
+		expect(report.problems).toBe(0);
+		expect(report.references.map((x) => [x.ref, x.owners, x.head.status])).toEqual([
+			['src/schema.ts#tables.apis', [{ pattern: 'api/table' }, { pattern: 'api/helper' }], 'resolved'],
+			['src/schema.ts#helper', [{ pattern: 'api/helper' }], 'resolved']
+		]);
+	});
+
+	it('fails a reference implementation that is not there', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA });
+		const report = await patternCodeReport(catalog({ 'api/table': ['src/schema.ts#tables.gone'] }), { root: r.root });
+		expect(report.problems).toBe(1);
+		expect(report.references[0].problem).toContain('no such definition');
+	});
+
+	it('with a base, says what changed in each and lists no changed lines', async () => {
+		const r = repo({ 'src/schema.ts': SCHEMA, 'src/other.ts': 'export const x = 1;\n' });
+		r.write('src/schema.ts', SCHEMA.replace('return 1;', 'return 2;'));
+		r.write('src/other.ts', 'export const x = 2;\n');
+		const report = await patternCodeReport(catalog({ 'api/table': ['src/schema.ts#tables.apis'], 'api/helper': ['src/schema.ts#helper'] }), { root: r.root, base: r.base });
+		expect(report.references.map((x) => [x.ref, x.delta])).toEqual([
+			['src/schema.ts#tables.apis', 'unchanged'],
+			['src/schema.ts#helper', 'modified']
+		]);
+		expect(report.files).toBeUndefined();
+		expect(report.unowned).toBeUndefined();
 	});
 });

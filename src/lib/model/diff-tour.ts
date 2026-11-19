@@ -1,5 +1,5 @@
 import { describeField, noteKeys, showValue, type Difference, type ModelDiff } from './diff.js';
-import type { Absence, Contract, Element, Model, Note, PatternDef, Profile, Relationship, Tour, TourStep } from './types.js';
+import type { Absence, Contract, Element, Model, Note, PatternDef, Profile, Relationship, Scenario, Tour, TourStep } from './types.js';
 import { validateModel } from './validate.js';
 import { viewMembers, viewRelationships } from './view.js';
 
@@ -8,7 +8,7 @@ import { viewMembers, viewRelationships } from './view.js';
  *
  * The result is the later version with its tours replaced by one generated tour: an overview,
  * then one step per item that was added, removed or changed. Each step shows the item where the
- * later version draws it.
+ * later version draws it. Its scenarios are left out, since the generated tour does not walk them.
  *
  * An element or relationship that is gone is put back, marked `revision: "removed"`, so it is
  * drawn where it was (DECISIONS 48). Anything else that is gone (a contract, a note, a field) is
@@ -26,6 +26,7 @@ const KIND_LABEL: Record<Difference['kind'], string> = {
 	note: 'note',
 	absence: 'absence',
 	pattern: 'proposed pattern',
+	scenario: 'scenario',
 	view: 'view',
 	tour: 'tour'
 };
@@ -59,7 +60,7 @@ const code = (s: string | null | undefined) => (s ? `\`${s}\`` : 'none');
 function was(d: Difference): string {
 	if (d.kind === 'element') {
 		const e = d.before as Element;
-		return `It was a ${e.kind}${e.parent ? ` inside ${code(e.parent)}` : ''}${e.pattern ? `, pattern ${code(e.pattern)}` : ''}${e.change ? `, marked ${code(e.change)}` : ''}.`;
+		return `It was a ${e.kind}${e.parent ? ` inside ${code(e.parent)}` : ''}${e.pattern ? `, pattern ${code(e.pattern)}` : ''}${e.bespoke ? `, bespoke (${e.bespoke})` : ''}${e.change ? `, marked ${code(e.change)}` : ''}.`;
 	}
 	if (d.kind === 'relationship') {
 		const r = d.before as Relationship;
@@ -74,6 +75,7 @@ function was(d: Difference): string {
 	if (d.kind === 'pattern') return `It was in the ${code((d.before as PatternDef).family)} family.`;
 	if (d.kind === 'absence') return `It said: ${(d.before as Absence).text}`;
 	if (d.kind === 'note') return `It said: ${(d.before as Note).text}`;
+	if (d.kind === 'scenario') return `It was: ${(d.before as Scenario).title}`;
 	return '';
 }
 
@@ -286,5 +288,8 @@ export function differenceModel(before: Model, later: Model, profile: Profile, d
 		summary: `${after.title}: what differs from the earlier version.`,
 		steps
 	};
-	return { ...after, tours: [tour] };
+	// the generated tour walks differences, not scenarios: the review model keeps none to walk
+	const review: Model = { ...after, tours: [tour] };
+	delete review.scenarios;
+	return review;
 }

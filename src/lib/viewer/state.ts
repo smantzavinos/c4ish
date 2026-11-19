@@ -1,11 +1,12 @@
 import type { Diagram } from '../render/diagram.js';
+import { isBespoke } from '../model/tours.js';
 import { changeStyle, isDropped } from '../render/node.js';
 
 /**
  * Viewer filter / highlight state, kept free of Svelte so it can be unit-tested.
  *
  * Filter keys match `LegendItem.filter` (comma-separated lists are expanded):
- *   pattern:<id> · pattern:none · change:<new|modified|reused|removed> · area:<id> ·
+ *   pattern:<id> · pattern:none · pattern:bespoke · change:<new|modified|reused|removed> · area:<id> ·
  *   lifecycle:<id> · edge:<edge-style key, e.g. enf:platform or kind:calls>
  */
 export interface FilterState {
@@ -66,6 +67,7 @@ export function itemKeys(d: Diagram): Map<string, Set<string>> {
 		if (e) {
 			if (e.pattern) keys.add(`pattern:${e.pattern}`);
 			if (e.pattern === null) keys.add('pattern:none');
+			if (isBespoke(e)) keys.add('pattern:bespoke');
 			for (const p of e.patterns ?? []) keys.add(`pattern:${p}`);
 			for (const part of e.parts ?? []) if (part.pattern) keys.add(`pattern:${part.pattern}`);
 			// a dropped item is a difference, never unchanged context

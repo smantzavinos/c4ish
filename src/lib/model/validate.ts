@@ -1,7 +1,7 @@
 import { viewMembers } from './view.js';
 import { validateTours } from './tours.js';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
-import type { Divergence, Element, Model, Profile, Severity, View } from './types.js';
+import type { Divergence, Element, Model, Part, Profile, ProfileInput, Severity, View } from './types.js';
 import { modelSchema, profileSchema } from './schema.js';
 import { parseCodeRef } from '../code/reference.js';
 import { partKey, tieKey } from './diff.js';
@@ -52,6 +52,27 @@ export function validateProfileSchema(json: unknown): Diagnostic[] {
 	return v(json) ? [] : schemaDiagnostics(v.errors, 'profile');
 }
 
+/** Semantics of a profile as written: the code references of its patterns. */
+export function validateProfile(profile: Pick<ProfileInput, 'patterns'>): Diagnostic[] {
+	const out: Diagnostic[] = [];
+	for (const [id, p] of Object.entries(profile.patterns ?? {})) out.push(...codeRefDiagnostics(p.code, `profile:pattern:${id}`));
+	return out;
+}
+
+function codeRefDiagnostics(refs: string[] | undefined, at: string): Diagnostic[] {
+	const out: Diagnostic[] = [];
+	const err = (message: string) => out.push({ severity: 'error', code: 'invalid-code-ref', message, at });
+	for (const raw of refs ?? []) {
+		const ref = parseCodeRef(raw);
+		if ('error' in ref) err(`code reference "${raw}" ${ref.error} (write path, path#Name or path#Outer.Inner)`);
+	}
+	if (new Set(refs).size !== (refs ?? []).length) err(`the same code reference is listed twice`);
+	return out;
+}
+
+/** Whether an element or part says what it follows: a pattern, deliberately none, or bespoke. */
+const statesPattern = (x: Pick<Part, 'pattern' | 'bespoke'>): boolean => x.pattern !== undefined || x.bespoke !== undefined;
+
 export function divergenceId(d: Divergence | undefined): string | undefined {
 	if (!d) return undefined;
 	return typeof d === 'string' ? d : d.id;
@@ -96,6 +117,12 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 	for (const p of model.proposedPatterns ?? []) {
 		if (profile.patterns[p.id]) err('proposed-pattern-exists', `proposed pattern "${p.id}" is already in the profile catalog`, p.id);
 		if (!profile.patternFamilies[p.family]) err('unknown-pattern-family', `pattern family "${p.family}" is not in the profile`, p.id);
+		out.push(...codeRefDiagnostics(p.code, p.id));
+	}
+	const scenarioIds = new Set<string>();
+	for (const s of model.scenarios ?? []) {
+		if (scenarioIds.has(s.id)) err('duplicate-id', `scenario id "${s.id}" is not unique`, `scenario:${s.id}`);
+		scenarioIds.add(s.id);
 	}
 
 	const checkChange = (value: string | undefined, at: string) => {
@@ -107,12 +134,13 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 	const checkPattern = (value: string | null | undefined, at: string) => {
 		if (value && !patternIds.has(value)) err('unknown-pattern', `pattern "${value}" is neither in the profile catalog nor in proposedPatterns`, at);
 	};
-	const checkCode = (refs: string[] | undefined, at: string) => {
-		for (const raw of refs ?? []) {
-			const ref = parseCodeRef(raw);
-			if ('error' in ref) err('invalid-code-ref', `code reference "${raw}" ${ref.error} (write path, path#Name or path#Outer.Inner)`, at);
-		}
-		if (new Set(refs).size !== (refs ?? []).length) err('invalid-code-ref', `the same code reference is listed twice`, at);
+	const checkCode = (refs: string[] | undefined, at: string) => out.push(...codeRefDiagnostics(refs, at));
+	// bespoke stands in place of a pattern: it is one of the states, never a second one
+	const checkBespoke = (x: Pick<Part, 'pattern' | 'patternFit' | 'bespoke'>, what: string, at: string) => {
+		if (x.bespoke === undefined) return;
+		if (!x.bespoke.trim()) err('bespoke-without-reason', `${what} is bespoke but gives no reason`, at);
+		if (x.pattern !== undefined) err('bespoke-with-pattern', `${what} is bespoke and also states ${x.pattern === null ? 'no pattern' : `pattern "${x.pattern}"`}; state one`, at);
+		if (x.patternFit !== undefined) err('bespoke-with-pattern', `${what} is bespoke and also states a pattern fit; a fit belongs to a pattern`, at);
 	};
 	const checkViews = (views: string[] | undefined, at: string) => {
 		for (const v of views ?? []) if (!viewIds.has(v)) err('unknown-view', `view "${v}" does not exist`, at);
@@ -134,6 +162,7 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 		if (e.lifecycle !== undefined && !profile.lifecycle[e.lifecycle]) err('unknown-lifecycle', `lifecycle "${e.lifecycle}" is not in the profile`, e.id);
 		if (e.area !== undefined && !profile.areas[e.area]) err('unknown-area', `area "${e.area}" is not in the profile`, e.id);
 		checkPattern(e.pattern, e.id);
+		checkBespoke(e, 'element', e.id);
 		(e.patterns ?? []).forEach((p) => checkPattern(p, e.id));
 		for (const lib of e.libraries ?? []) {
 			const l = elements.get(lib);
@@ -161,6 +190,7 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 		}
 		for (const p of e.parts ?? []) {
 			checkPattern(p.pattern, e.id);
+			checkBespoke(p, `part "${p.title}"`, e.id);
 			checkChange(p.change, e.id);
 			checkCode(p.code, e.id);
 		}
@@ -169,6 +199,15 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 		checkViews(e.views, e.id);
 		if (e.change === undefined && kind?.role !== 'library')
 			lint(rules.missingChange, 'missing-change', `element has no change state (drawn as reused)`, e.id);
+		const style = e.change ? profile.changeStates[e.change]?.style : undefined;
+		const stated = statesPattern(e) || (!!e.parts?.length && e.parts.every(statesPattern));
+		if ((kind?.category === 'code' || kind?.category === 'data') && (style === 'new' || style === 'modified') && !stated)
+			lint(
+				rules.missingPattern,
+				'missing-pattern',
+				`${style} ${e.kind} states neither a pattern nor "bespoke" with a reason${e.parts?.length ? ' (on itself or on each of its parts)' : ''}`,
+				e.id
+			);
 		textBudget(e, rules, lint);
 	}
 
@@ -252,7 +291,7 @@ export function validateModel(model: Model, profile: Profile): Diagnostic[] {
 	// ---- tours (only when the model is otherwise sound) -------------------------
 	if (!out.some((d) => d.severity === 'error')) {
 		for (const d of validateTours(model, profile)) {
-			if (d.code === 'tour-coverage') lint(rules.tourCoverage, d.code, d.message, d.at);
+			if (d.code === 'tour-coverage' || d.code === 'scenario-coverage') lint(rules.tourCoverage, d.code, d.message, d.at);
 			else out.push(d);
 		}
 	}

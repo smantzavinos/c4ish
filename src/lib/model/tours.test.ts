@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { check } from '../api.js';
 import { clone, EXAMPLES, loadExample } from '../test/fixtures.js';
-import { tourCoverage, toursCoverage, validateTours } from './tours.js';
+import { stepDims, stepLit, stepNarration, tourCoverage, toursCoverage, unwalkedScenarios, validateTours } from './tours.js';
 import type { Model, Profile, TourStep } from './types.js';
 
 const base: Model = {
@@ -123,4 +123,69 @@ describe('tour validation', () => {
 			expect(res.model!.tours?.length).toBeGreaterThan(0);
 			for (const t of res.model!.tours!) expect(tourCoverage(res.model!, res.profile!, t).uncovered).toEqual([]);
 		});
+});
+
+describe('bespoke in tours', () => {
+	const bespoke = (edit: (m: Model) => void, steps: TourStep[]) => {
+		const m = withSteps(steps);
+		edit(m);
+		return resolved(m);
+	};
+	const el = (m: Model, id: string) => m.elements.find((e) => e.id === id)!;
+	const oneOff = (id: string) => (m: Model) => {
+		delete el(m, id).pattern;
+		el(m, id).bespoke = 'One caller.';
+	};
+	const uncovered = (r: { model: Model; profile: Profile }) =>
+		toursCoverage(r.model, r.profile)[0]
+			.uncovered.map((u) => `${u.id}:${u.reason}`)
+			.filter((u) => u.endsWith(':bespoke'));
+	const elsewhere: TourStep[] = [{ id: 'a', title: 'A', view: 'eng', focus: ['tbl'] }];
+
+	it('a new or modified bespoke element must be pointed at', () => {
+		expect(uncovered(bespoke(oneOff('svc'), elsewhere))).toEqual(['svc:bespoke']);
+		expect(uncovered(bespoke(oneOff('svc'), [{ id: 'a', title: 'A', view: 'eng', select: 'svc' }]))).toEqual([]);
+		const warned = check(bespoke(oneOff('svc'), elsewhere).model).diagnostics.map((d) => d.message);
+		expect(warned).toContain('tour "t": bespoke item "Service" (svc) is not pointed at by any step — focus, select, path or a named note; highlights don\'t count');
+	});
+	it('a bespoke part counts by its own change state, or its element\'s', () => {
+		const part = (change?: string) => (m: Model) => void (el(m, 'svc').parts = [{ title: 'retry', bespoke: 'Only here.', ...(change && { change }) }]);
+		expect(uncovered(bespoke(part(), elsewhere))).toEqual(['svc:bespoke']);
+		expect(uncovered(bespoke(part('reused'), elsewhere))).toEqual([]);
+	});
+	it('an existing one-off shown as context is not a review item', () => {
+		expect(uncovered(bespoke(oneOff('ui'), elsewhere))).toEqual([]);
+	});
+	it('a bespoke highlight lights every bespoke element and never covers one', () => {
+		const step: TourStep = { id: 'a', title: 'A', view: 'eng', highlight: { bespoke: true } };
+		const r = bespoke(
+			(m) => {
+				oneOff('svc')(m);
+				oneOff('ui')(m);
+			},
+			[step]
+		);
+		expect([...stepLit(r.model, r.profile, step)].sort()).toEqual(['svc', 'ui']);
+		expect(stepDims(step)).toBe(true);
+		expect(uncovered(r)).toEqual(['svc:bespoke']);
+	});
+});
+
+describe('scenarios in tours', () => {
+	const scenarios = [
+		{ id: 'S1', title: 'Save an item' },
+		{ id: 'S2', title: 'Read the items' }
+	];
+	it('a step names the scenarios it walks under its narration', () => {
+		expect(stepNarration({ scenarios }, { body: 'The page **saves**.', scenarios: ['S2', 'S1'] })).toBe('The page **saves**.\n\nWalks: **S2** Read the items · **S1** Save an item');
+		expect(stepNarration({ scenarios }, { scenarios: ['S1'] })).toBe('Walks: **S1** Save an item');
+		expect(stepNarration({ scenarios }, { body: 'Nothing walked.' })).toBe('Nothing walked.');
+		expect(stepNarration({ scenarios }, {})).toBeUndefined();
+	});
+	it('lists the scenarios no step of any tour names', () => {
+		const m = withSteps([{ id: 'a', title: 'A', view: 'eng', scenarios: ['S2'] }]);
+		m.scenarios = scenarios;
+		expect(unwalkedScenarios(m).map((s) => s.id)).toEqual(['S1']);
+		expect(unwalkedScenarios({ ...m, tours: undefined }).map((s) => s.id)).toEqual(['S1', 'S2']);
+	});
 });

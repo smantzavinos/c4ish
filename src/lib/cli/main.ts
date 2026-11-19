@@ -3,10 +3,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { check } from '../api.js';
-import { validateModelSchema, type Diagnostic } from '../model/validate.js';
+import { validateModelSchema, validateProfile, validateProfileSchema, type Diagnostic } from '../model/validate.js';
+import { resolveProfile } from '../profile/resolve.js';
 import { ASPECT_NAMES, describeField, diffModels, filterDiff, type Aspect } from '../model/diff.js';
 import { differenceModel } from '../model/diff-tour.js';
-import type { Model } from '../model/types.js';
+import type { Model, ProfileInput } from '../model/types.js';
 import { renderView } from '../render/page.js';
 import { exportTour } from '../render/tour-export.js';
 import { tourCoverage } from '../model/tours.js';
@@ -20,8 +21,10 @@ Usage:
   c4ish tour     <model.json> [--profile p.json] [--tour id] [--out dir] [--png]
   c4ish view     <model.json> [--profile p.json] [--tour [id]] [--step id] [--port n] [--no-open] [--rebuild]
   c4ish code     <model.json> [--profile p.json] [--base commit] [--root dir] [--json]
+  c4ish code     <profile.json> [--base commit] [--root dir] [--json]
   c4ish diff     <old.json> <new.json> [--only aspects] [--json] [--out review.json] [--profile p.json]
   c4ish diff     <model.json> --base commit [--only aspects] [--json] [--out review.json] [--profile p.json]
+  c4ish profile  [profile.json]
   c4ish guide
   c4ish schema   [model | profile]
   c4ish --version
@@ -38,7 +41,9 @@ code      Finds the code each element's "code" references name (path, path#Name,
           relative to --root (default: the git repository holding the model). With --base it also
           resolves them at that commit, says what changed in each, and lists every changed line with
           the references that contain it. --json prints the full report. Exit 1 when a reference
-          cannot be used as written.
+          cannot be used as written. Given a profile instead of a model, it does the same for the
+          reference implementations its patterns name ("code" on a pattern), without the list of
+          changed lines.
 diff      Compares two versions of a model, item by item, matched by id. The earlier version is a
           file, or with --base the same file at that commit. Every difference has an aspect:
           structure, text, code, presentation or provenance; --only keeps the ones listed
@@ -46,6 +51,8 @@ diff      Compares two versions of a model, item by item, matched by id. The ear
           later version with one generated tour that walks what differs (open it with
           "c4ish view <review.json> --tour", or export it with "c4ish tour"). Exit 1 only when a
           version cannot be read.
+profile   Prints a profile as c4ish reads it, as JSON: the file with the default profile merged in
+          when it extends it, or the default profile when no file is given. Exit 1 on errors.
 guide     Prints the authoring reference: how to write a model, with one complete example.
 schema    Prints the JSON Schema of a model (default) or a profile.
 Profile:  --profile wins; else the model's "profile" path (relative to the model); else the default.`;
@@ -101,6 +108,18 @@ function load(file: string, profileFlag: string | true | undefined) {
 	return { modelJson, profileJson, profilePath };
 }
 
+/** A profile file, checked; its problems are printed and it is not returned when it has any. */
+function readProfile(file: string): ProfileInput | undefined {
+	const json = readJson(file);
+	const problems = validateProfileSchema(json);
+	if (!problems.length) problems.push(...validateProfile(json as ProfileInput));
+	printDiagnostics(file, problems);
+	if (problems.length) console.error(`${file}: ${problems.length} error(s)`);
+	return problems.length ? undefined : (json as ProfileInput);
+}
+
+const isProfileFile = (json: unknown): boolean => typeof json === 'object' && json !== null && 'profileVersion' in json && !('schemaVersion' in json);
+
 /** The schema version this build reads, taken from the shipped JSON Schema so it cannot drift. */
 function schemaVersion(which: 'model' | 'profile'): number {
 	const schema = JSON.parse(readFileSync(join(packageRoot(), 'schema', `${which}.schema.json`), 'utf8')) as { properties: Record<string, { const: number }> };
@@ -117,6 +136,15 @@ function info(cmd: string | undefined, arg: string | undefined, flags: Map<strin
 	if (cmd === 'guide') {
 		process.stdout.write(readFileSync(join(packageRoot(), 'docs', 'AUTHORING.md'), 'utf8'));
 		return 0;
+	}
+	if (cmd === 'profile') {
+		if (arg === undefined) {
+			process.stdout.write(JSON.stringify(resolveProfile(), null, '\t') + '\n');
+			return 0;
+		}
+		const profile = readProfile(arg);
+		if (profile) process.stdout.write(JSON.stringify(resolveProfile(profile), null, '\t') + '\n');
+		return profile ? 0 : 1;
 	}
 	if (cmd === 'schema') {
 		const which = arg ?? 'model';
@@ -143,6 +171,7 @@ async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	if (cmd === 'diff') return diff(file, other, flags);
+	if (cmd === 'code' && isProfileFile(readJson(file))) return patternCode(file, flags);
 	const { modelJson, profileJson } = load(file, flags.get('profile'));
 	const result = check(modelJson, profileJson);
 	printDiagnostics(file, result.diagnostics);
@@ -241,6 +270,26 @@ async function code(file: string, result: ReturnType<typeof check>, flags: Map<s
 		return 1;
 	}
 	const report = await codeReport(result.model, result.profile, { root, base: str('base') });
+	return printCodeReport(file, report, flags, (o) => (o.part ? `${o.element} / ${o.part}` : o.element));
+}
+
+/** `c4ish code <profile.json>`: where the reference implementations of its patterns are. */
+async function patternCode(file: string, flags: Map<string, string | true>): Promise<number> {
+	const profile = readProfile(file);
+	if (!profile) return 1;
+	const { patternCodeReport, repositoryRoot } = await import('../code/report.js');
+	const str = (k: string) => (typeof flags.get(k) === 'string' ? (flags.get(k) as string) : undefined);
+	const root = str('root') ? resolve(str('root')!) : repositoryRoot(dirname(resolve(file)));
+	if (!root) {
+		console.error(`${file} is not inside a git repository; pass --root <dir>`);
+		return 1;
+	}
+	const report = await patternCodeReport(resolveProfile(profile), { root, base: str('base') });
+	return printCodeReport(file, report, flags, (o) => `pattern ${o.pattern}`);
+}
+
+function printCodeReport<Owner>(file: string, report: import('../code/report.js').CodeReport<Owner>, flags: Map<string, string | true>, owner: (o: Owner) => string): number {
+	const root = report.root;
 	if (flags.has('json')) {
 		process.stdout.write(JSON.stringify(report, null, '\t') + '\n');
 		return report.problems ? 1 : 0;
@@ -250,7 +299,7 @@ async function code(file: string, result: ReturnType<typeof check>, flags: Map<s
 	for (const r of report.references) {
 		const state = r.problem ? 'PROBLEM' : (r.delta ?? r.head.status);
 		const where = span(r.head.status === 'resolved' ? r.head : r.base);
-		const who = r.owners.map((o) => (o.part ? `${o.element} / ${o.part}` : o.element)).join(', ');
+		const who = r.owners.map(owner).join(', ');
 		console.log(`  ${state.padEnd(10)} ${r.ref}${where ? `  ${where}` : ''}  [${who}]`);
 		const more = [
 			r.problem,

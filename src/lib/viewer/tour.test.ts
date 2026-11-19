@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { check } from '../api.js';
 import { buildDiagram } from '../render/diagram.js';
 import { loadExample } from '../test/fixtures.js';
-import { classify } from './state.js';
+import { classify, itemKeys } from './state.js';
 import { currentStep, explore, gotoStep, narrationHtml, nextStep, parseTourHash, prevStep, resume, startTour, stepFilter, tourFromHash, tourHash } from './tour.js';
 import type { Tour } from '../model/types.js';
 
@@ -66,6 +66,25 @@ describe('step filter', () => {
 		for (const id of ['seedPage', 'pageMerge', 'mergeIndexes', 'loader', 'page', 'merge', 'items']) expect(em.get(id)).toBe('normal');
 		expect(em.get('owner')).toBe('dim');
 		expect(em.get('secret')).toBe('dim');
+	});
+
+	it('a bespoke highlight is the key of the bespoke row, and lights the cards that carry it', async () => {
+		const { model, profile } = loadExample('paged-reads');
+		const m = structuredClone(check(model, profile).model!);
+		const one = m.elements.find((e) => typeof e.pattern === 'string' && !e.patternFit && !m.elements.some((c) => c.parent === e.id))!;
+		delete one.pattern;
+		one.bespoke = 'One caller.';
+		const res = check(m, profile);
+		expect(res.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+		const view = res.model!.views.find((v) => v.kind === 'engineering')!.id;
+		const f = stepFilter(res.model!, res.profile!, { id: 's', title: 'S', view, highlight: { bespoke: true } });
+		expect(f.highlight).toEqual(['pattern:bespoke']);
+		const d = await buildDiagram(res.model!, res.profile!, { view });
+		expect(d.legend.sections.flatMap((s) => s.items).find((i) => i.id === 'pattern:bespoke')?.filter).toBe('pattern:bespoke');
+		expect(itemKeys(d).get(one.id)?.has('pattern:bespoke')).toBe(true);
+		const em = classify(d, f);
+		expect(em.get(one.id)).toBe('normal');
+		expect(d.nodes.filter((n) => n.id !== one.id).every((n) => em.get(n.id) === 'dim')).toBe(true);
 	});
 
 	it('maps a highlight to the same keys the legend uses', () => {

@@ -1,4 +1,5 @@
 import type { Model, Profile, Tour } from '../model/types.js';
+import { stepNarration } from '../model/tours.js';
 import { narrationHtml, narrationText, stepFilter, tourHash } from '../viewer/tour.js';
 import { renderView } from './page.js';
 
@@ -21,7 +22,7 @@ export async function exportTour(model: Model, profile: Profile, tour: Tour): Pr
 		const res = await renderView(model, profile, {
 			view: step.view,
 			idPrefix: `t${i + 1}-`,
-			tour: { tourTitle: tour.title, stepTitle: step.title, body: narrationText(step.body), index: i + 1, total, filter: stepFilter(model, profile, step) }
+			tour: { tourTitle: tour.title, stepTitle: step.title, body: narrationText(stepNarration(model, step)), index: i + 1, total, filter: stepFilter(model, profile, step) }
 		});
 		const file = `${String(i + 1).padStart(2, '0')}-${step.id.replace(/[^A-Za-z0-9_-]+/g, '-')}.svg`;
 		steps.push({ file, id: step.id, title: step.title, svg: res.svg, width: res.width, height: res.height });
@@ -34,14 +35,14 @@ export async function exportTour(model: Model, profile: Profile, tour: Tour): Pr
 			.map((s, i) => {
 				const f = steps[i].file;
 				const view = model.views.find((v) => v.id === s.view)?.title ?? s.view;
-				return `## ${i + 1}. ${s.title}\n\n*View: ${view}* · viewer link: \`${tourHash(tour.id, s.id)}\`\n\n${s.body ?? ''}\n\n![${s.title}](${f})\n`;
+				return `## ${i + 1}. ${s.title}\n\n*View: ${view}* · viewer link: \`${tourHash(tour.id, s.id)}\`\n\n${stepNarration(model, s) ?? ''}\n\n![${s.title}](${f})\n`;
 			})
 			.join('\n');
 
 	const slides = tour.steps
 		.map(
 			(s, i) =>
-				`<section data-step="${esc(s.id)}"><header><span class="n">${i + 1} / ${total}</span><h2>${esc(s.title)}</h2>${narrationHtml(s.body)}</header>` +
+				`<section data-step="${esc(s.id)}"><header><span class="n">${i + 1} / ${total}</span><h2>${esc(s.title)}</h2>${narrationHtml(stepNarration(model, s))}</header>` +
 				`<img src="${esc(steps[i].file)}" alt="${esc(s.title)}" width="${steps[i].width}" height="${steps[i].height}"></section>`
 		)
 		.join('\n');

@@ -13,7 +13,7 @@ export function stepFilter(model: Model, profile: Profile, step: TourStep): Filt
 	const h = step.highlight ?? {};
 	const proposed = h.proposed ? (model.proposedPatterns ?? []).map((p) => p.id) : [];
 	const highlight = [
-		...[...(h.patterns ?? []), ...proposed].map((p) => `pattern:${p}`),
+		...[...(h.patterns ?? []), ...proposed, ...(h.bespoke ? ['bespoke'] : [])].map((p) => `pattern:${p}`),
 		...(h.change ?? []).map((c) => `change:${profile.changeStates[c]?.style ?? c}`),
 		...(h.enforcement ?? []).map((x) => `edge:enf:${x}`)
 	];

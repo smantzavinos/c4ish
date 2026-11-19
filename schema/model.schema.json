@@ -160,6 +160,10 @@
 							"partial"
 						]
 					},
+					"bespoke": {
+						"type": "string",
+						"minLength": 1
+					},
 					"patterns": {
 						"type": "array",
 						"items": {
@@ -316,6 +320,16 @@
 											"type": "null"
 										}
 									]
+								},
+								"patternFit": {
+									"enum": [
+										"full",
+										"partial"
+									]
+								},
+								"bespoke": {
+									"type": "string",
+									"minLength": 1
 								},
 								"change": {
 									"type": "string"
@@ -624,6 +638,12 @@
 					},
 					"description": {
 						"type": "string"
+					},
+					"code": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
 					}
 				}
 			}
@@ -713,6 +733,9 @@
 										},
 										"proposed": {
 											"type": "boolean"
+										},
+										"bespoke": {
+											"type": "boolean"
 										}
 									}
 								},
@@ -754,9 +777,36 @@
 								},
 								"onlyChanges": {
 									"type": "boolean"
+								},
+								"scenarios": {
+									"type": "array",
+									"items": {
+										"type": "string",
+										"pattern": "^[A-Za-z_][A-Za-z0-9_.:/-]*$"
+									}
 								}
 							}
 						}
+					}
+				}
+			}
+		},
+		"scenarios": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": [
+					"id",
+					"title"
+				],
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z_][A-Za-z0-9_.:/-]*$"
+					},
+					"title": {
+						"type": "string"
 					}
 				}
 			}

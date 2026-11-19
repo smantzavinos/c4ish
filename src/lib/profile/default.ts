@@ -9,18 +9,18 @@ export const defaultProfile: Profile = {
 	id: 'default',
 	title: 'c4ish default',
 	elementKinds: {
-		system: { label: 'System', icon: 'system' },
-		container: { label: 'Container', icon: 'container' },
-		component: { label: 'Component', icon: 'component', parents: ['container', 'system', 'component'] },
-		data: { label: 'Data', icon: 'table' },
-		store: { label: 'Data store', icon: 'store' },
+		system: { label: 'System', icon: 'system', category: 'container' },
+		container: { label: 'Container', icon: 'container', category: 'container' },
+		component: { label: 'Component', icon: 'component', parents: ['container', 'system', 'component'], category: 'code' },
+		data: { label: 'Data', icon: 'table', category: 'data' },
+		store: { label: 'Data store', icon: 'store', category: 'container' },
 		external: { label: 'External system', icon: 'external' },
 		person: { label: 'Person', icon: 'person' },
 		library: { label: 'Library', role: 'library', icon: 'library' },
-		product: { label: 'Product concept', icon: 'concept', area: 'product' },
-		version: { label: 'Version', icon: 'version', area: 'product' },
-		configuration: { label: 'Configuration', icon: 'configuration', area: 'system' },
-		page: { label: 'Page', icon: 'page', area: 'product' }
+		product: { label: 'Product concept', icon: 'concept', area: 'product', category: 'product' },
+		version: { label: 'Version', icon: 'version', area: 'product', category: 'product' },
+		configuration: { label: 'Configuration', icon: 'configuration', area: 'system', category: 'product' },
+		page: { label: 'Page', icon: 'page', area: 'product', category: 'product' }
 	},
 	patternFamilies: {
 		web: { label: 'Web', icon: 'page', colour: '#2563eb' },
@@ -124,6 +124,7 @@ export const defaultProfile: Profile = {
 		siblingChains: 'warning',
 		textBudget: 'warning',
 		removedWithLiveEdges: 'warning',
+		missingPattern: 'warning',
 		titleMaxChars: 40,
 		subtitleMaxChars: 64,
 		labelMaxChars: 40

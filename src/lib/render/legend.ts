@@ -43,7 +43,7 @@ export interface LegendInput {
 }
 
 /** A miniature card: header tint + left band in the identity colour; change channel on the border. */
-function cardSwatch(ctx: DrawCtx, opts: { colour?: string; proposed?: boolean; none?: boolean; change?: ChangeStyle }): string {
+function cardSwatch(ctx: DrawCtx, opts: { colour?: string; proposed?: boolean; none?: boolean; bespoke?: boolean; change?: ChangeStyle }): string {
 	const w = 30;
 	const h = 18;
 	const y = 1;
@@ -58,6 +58,7 @@ function cardSwatch(ctx: DrawCtx, opts: { colour?: string; proposed?: boolean; n
 		header = C.white;
 		band = C.white;
 	}
+	if (opts.bespoke) band = C.slate;
 	const ch = opts.change ?? 'new';
 	const stroke = ch === 'reused' ? C.faint : ch === 'removed' ? C.slate : colour && !opts.change ? shade(colour, 0.1) : C.ink;
 	const sw = ch === 'reused' ? 1 : ch === 'removed' ? 1.4 : 1.25;
@@ -107,6 +108,7 @@ export function buildLegend({ ctx, edgeStyles, markers }: LegendInput): Legend {
 	// cards first, tag-only patterns after
 	patItems.sort((a, b) => Number(a.label.endsWith('(tag only)')) - Number(b.label.endsWith('(tag only)')));
 	if (used.noPattern) patItems.push({ id: 'pattern:none', label: 'No pattern (deliberate)', swatch: cardSwatch(ctx, { none: true }), swatchW: 30, filter: 'pattern:none' });
+	if (used.bespoke) patItems.push({ id: 'pattern:bespoke', label: 'Bespoke (one-off, reason stated)', swatch: cardSwatch(ctx, { bespoke: true }), swatchW: 30, filter: 'pattern:bespoke' });
 	if (used.partial)
 		patItems.push({
 			id: 'pattern:partial',

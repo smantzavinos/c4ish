@@ -1,4 +1,4 @@
-import type { Element, Model, Profile, Tour, TourPathEntry, TourStep, View } from './types.js';
+import type { Element, Model, Profile, Scenario, Tour, TourPathEntry, TourStep, View } from './types.js';
 import { viewMembers, viewRelationships } from './view.js';
 
 /**
@@ -7,10 +7,13 @@ import { viewMembers, viewRelationships } from './view.js';
  * A step lights: its focus (a frame lights everything inside it), its selection, every connector
  * of its path and their endpoints, the targets of its notes, and everything its highlight matches.
  * Coverage is stricter (DECISIONS 25): each tour on its own must *point at* every new / modified /
- * removed item, every element on a proposed pattern, every risk note and every divergence — by
+ * removed item, every element on a proposed pattern, every new or modified bespoke element, every
+ * risk note and every divergence — by
  * focus, select, a path (its connectors, their endpoints and the frames the path enters) or a
  * named note (the note and its target). Broad highlights and "only changes" light items for an
  * overview but never count as coverage.
+ *
+ * Scenarios are judged across all tours (DECISIONS 49): each must be named by at least one step.
  */
 
 export interface TourDiagnostic {
@@ -23,7 +26,7 @@ export interface TourDiagnostic {
 export interface CoverageItem {
 	/** Element, relationship or note id (`note:<n>` for notes without an id). */
 	id: string;
-	reason: 'new' | 'modified' | 'removed' | 'proposed-pattern' | 'risk-note' | 'divergence';
+	reason: 'new' | 'modified' | 'removed' | 'proposed-pattern' | 'bespoke' | 'risk-note' | 'divergence';
 	title: string;
 }
 
@@ -44,7 +47,7 @@ export function pathRelationships(step: Pick<TourStep, 'path'>): string[] {
 export function stepDims(step: TourStep): boolean {
 	if (step.dimOthers !== undefined) return step.dimOthers;
 	const h = step.highlight;
-	const highlights = !!h && (!!h.patterns?.length || !!h.change?.length || !!h.enforcement?.length || !!h.proposed);
+	const highlights = !!h && (!!h.patterns?.length || !!h.change?.length || !!h.enforcement?.length || !!h.proposed || !!h.bespoke);
 	return !!(step.focus?.length || step.path?.length || step.select || step.notes?.length || highlights);
 }
 
@@ -116,7 +119,7 @@ export function stepLit(model: Model, profile: Profile, step: TourStep, idx?: Vi
 		for (const id of vi.members) {
 			const e = elements.get(id)!;
 			const ps = elementPatterns(e);
-			if (ps.some((p) => patterns.has(p)) || (h.proposed && ps.some((p) => proposed.has(p))) || changeStyles.has(styleOf(e.change))) lightEl(id);
+			if (ps.some((p) => patterns.has(p)) || (h.proposed && ps.some((p) => proposed.has(p))) || (h.bespoke && isBespoke(e)) || changeStyles.has(styleOf(e.change))) lightEl(id);
 		}
 		const enf = new Set(h.enforcement ?? []);
 		for (const id of vi.rels) {
@@ -182,6 +185,29 @@ function directlyLit(step: TourStep, id: string, rels: Map<string, { from: strin
 	return pathRelationships(step).some((r) => r === id || rels.get(r)?.from === id || rels.get(r)?.to === id);
 }
 
+/** Whether an element is a one-off, or holds a part that is. */
+export const isBespoke = (e: Element): boolean => e.bespoke !== undefined || (e.parts ?? []).some((p) => p.bespoke !== undefined);
+
+/** The scenarios a step walks, in the order the step names them. */
+export function stepScenarios(model: Pick<Model, 'scenarios'>, step: Pick<TourStep, 'scenarios'>): Scenario[] {
+	const byId = new Map((model.scenarios ?? []).map((s) => [s.id, s]));
+	return (step.scenarios ?? []).map((id) => byId.get(id) ?? { id, title: '' });
+}
+
+/** A step's narration with the scenarios it walks as a last paragraph (markdown). */
+export function stepNarration(model: Pick<Model, 'scenarios'>, step: Pick<TourStep, 'body' | 'scenarios'>): string | undefined {
+	const walked = stepScenarios(model, step);
+	if (!walked.length) return step.body;
+	const line = `Walks: ${walked.map((s) => `**${s.id}**${s.title ? ` ${s.title}` : ''}`).join(' · ')}`;
+	return step.body ? `${step.body}\n\n${line}` : line;
+}
+
+/** Scenarios that no step of any tour names. */
+export function unwalkedScenarios(model: Model): Scenario[] {
+	const walked = new Set((model.tours ?? []).flatMap((t) => t.steps.flatMap((s) => s.scenarios ?? [])));
+	return (model.scenarios ?? []).filter((s) => !walked.has(s.id));
+}
+
 function elementPatterns(e: Element): string[] {
 	return [e.pattern, ...(e.patterns ?? []), ...(e.parts ?? []).map((p) => p.pattern)].filter((p): p is string => !!p);
 }
@@ -206,6 +232,9 @@ export function tourCoverage(model: Model, profile: Profile, tour: Tour): TourCo
 		const style = e.change ? profile.changeStates[e.change]?.style : undefined;
 		if (style === 'new' || style === 'modified' || style === 'removed') add(e.id, style, e.title);
 		if (elementPatterns(e).some((p) => proposed.has(p))) add(e.id, 'proposed-pattern', e.title);
+		// an existing one-off shown as context is not a review item; one this change adds or alters is
+		const changed = (c: string | undefined) => ['new', 'modified'].includes((c && profile.changeStates[c]?.style) || '');
+		if ((e.bespoke !== undefined && changed(e.change)) || (e.parts ?? []).some((p) => p.bespoke !== undefined && changed(p.change ?? e.change))) add(e.id, 'bespoke', e.title);
 		if (e.divergence || (e.ties ?? []).some((t) => t.divergence)) add(e.id, 'divergence', e.title);
 	}
 	for (const r of model.relationships ?? []) if (r.divergence) add(r.id, 'divergence', r.label ?? `${r.from} → ${r.to}`);
@@ -230,9 +259,9 @@ export function toursCoverage(model: Model, profile: Profile, tours: Tour[] = mo
 export function validateTours(model: Model, profile: Profile): TourDiagnostic[] {
 	const tours = model.tours ?? [];
 	const out: TourDiagnostic[] = [];
-	if (!tours.length) return out;
 	const err = (code: string, message: string, at: string) => out.push({ severity: 'error', code, message, at });
 	const warn = (code: string, message: string, at: string) => out.push({ severity: 'warning', code, message, at });
+	const scenarios = new Set((model.scenarios ?? []).map((s) => s.id));
 	const elements = new Map(model.elements.map((e) => [e.id, e]));
 	const rels = new Map((model.relationships ?? []).map((r) => [r.id, r]));
 	const notes = new Set((model.notes ?? []).map((n, i) => noteKey(model, i)));
@@ -258,6 +287,7 @@ export function validateTours(model: Model, profile: Profile): TourDiagnostic[] 
 			const at = `tour:${t.id}/${s.id}`;
 			if (stepIds.has(s.id)) err('duplicate-id', `step id "${s.id}" is not unique in tour "${t.id}"`, at);
 			stepIds.add(s.id);
+			for (const id of s.scenarios ?? []) if (!scenarios.has(id)) err('unknown-ref', `scenario "${id}" is not in the model's scenarios`, at);
 			const vi = index.get(s.view);
 			if (!vi) {
 				err('unknown-view', `view "${s.view}" does not exist`, at);
@@ -310,5 +340,7 @@ export function validateTours(model: Model, profile: Profile): TourDiagnostic[] 
 				`tour "${c.tour}": ${u.reason} item "${u.title}" (${u.id}) is not pointed at by any step — focus, select, path or a named note; highlights don't count`,
 				u.id
 			);
+	for (const s of unwalkedScenarios(model))
+		warn('scenario-coverage', `scenario "${s.title}" (${s.id}) is walked by no tour step — name it in the "scenarios" of the steps that show it`, `scenario:${s.id}`);
 	return out;
 }

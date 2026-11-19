@@ -15,6 +15,8 @@ export interface Used {
 	/** Patterns that give at least one card its colour (the rest only appear as chips). */
 	primary: Set<string>;
 	noPattern: boolean;
+	/** Some drawn element or part is bespoke. */
+	bespoke: boolean;
 	partial: boolean;
 	lifecycle: Set<string>;
 	divergence: boolean;
@@ -40,6 +42,7 @@ export function newUsed(): Used {
 		patterns: new Map(),
 		primary: new Set(),
 		noPattern: false,
+		bespoke: false,
 		partial: false,
 		lifecycle: new Set(),
 		divergence: false,
@@ -78,15 +81,21 @@ function changeBadge(profile: Profile, change: string | undefined): string | und
 	return def.badge ?? (def.style === 'reused' ? undefined : def.label.toUpperCase());
 }
 
+/** Why an element and its parts are bespoke, one line each (empty when none is). */
+export function bespokeReasons(e: Element): string[] {
+	return [...(e.bespoke !== undefined ? [`Bespoke: ${e.bespoke}`] : []), ...(e.parts ?? []).filter((p) => p.bespoke !== undefined).map((p) => `Bespoke part "${p.title}": ${p.bespoke}`)];
+}
+
+/** Text that only the appendix or the panel can hold: details, and the reasons for being bespoke. */
 export function hasDetails(e: Element): boolean {
-	return !!e.details && (Array.isArray(e.details) ? e.details.length > 0 : e.details.trim().length > 0);
+	return bespokeReasons(e).length > 0 || (!!e.details && (Array.isArray(e.details) ? e.details.length > 0 : e.details.trim().length > 0));
 }
 
 /* ------------------------------------------------------------------------- */
 /* Chips                                                                       */
 /* ------------------------------------------------------------------------- */
 
-type ChipKind = 'pattern' | 'proposed' | 'nopattern' | 'lifecycle' | 'divergence' | 'lib' | 'libnew' | 'secondary';
+type ChipKind = 'pattern' | 'proposed' | 'nopattern' | 'bespoke' | 'lifecycle' | 'divergence' | 'lib' | 'libnew' | 'secondary';
 
 export interface Chip {
 	kind: ChipKind;
@@ -111,6 +120,9 @@ function chip(c: Omit<Chip, 'width'>): Chip {
 	if (c.partial) w += 12;
 	return { ...c, width: Math.ceil(w) };
 }
+
+export const BESPOKE_LABEL = 'BESPOKE';
+const bespokeChip = (): Chip => chip({ kind: 'bespoke', text: 'bespoke' });
 
 export function patternChip(p: PatternDef | undefined, id: string, profile: Profile, colourNodes: boolean, partial: boolean): Chip {
 	const fam = p ? profile.patternFamilies[p.family] : undefined;
@@ -180,6 +192,13 @@ export function drawChip(x: number, y: number, c: Chip, ctx: DrawCtx, onDark = f
 			fill = C.surface;
 			fg = C.muted;
 			weight = 500;
+			break;
+		case 'bespoke':
+			// a one-off: no family colour, a dashed outline like a proposal, plain like nothing else
+			stroke = C.slate;
+			fg = C.ink;
+			dash = '3 2';
+			weight = 700;
 			break;
 	}
 	if (onDark) {
@@ -387,6 +406,8 @@ export interface Identity {
 	proposed: boolean;
 	/** Deliberately no pattern. */
 	none: boolean;
+	/** A one-off, with a stated reason. */
+	bespoke?: boolean;
 	partial: boolean;
 }
 
@@ -402,6 +423,7 @@ export function identity(n: SceneNode, scene: Scene): Identity {
 		const area = n.area ? profile.areas[n.area] : undefined;
 		return { colour: area?.colour, label: (kindDef?.label ?? e.kind).toUpperCase(), icon: kindIcon, proposed: false, none: false, partial };
 	}
+	if (e.bespoke !== undefined) return { label: BESPOKE_LABEL, icon: kindIcon, proposed: false, none: false, bespoke: true, partial: false };
 	if (e.pattern === null) return { label: 'NO PATTERN', icon: kindIcon, proposed: false, none: true, partial };
 	if (!e.pattern) return { icon: kindIcon, proposed: false, none: false, partial };
 	const colour = notation.colour.nodes === 'pattern' ? (p?.colour ?? fam?.colour) : undefined;
@@ -463,6 +485,11 @@ function elementChips(n: SceneNode, scene: Scene, used: Used, includeLifecycle =
 	} else if (e.pattern === null) {
 		if (includePrimary) chips.push(chip({ kind: 'nopattern', text: 'no pattern' }));
 		used.noPattern = true;
+	}
+	if (e.bespoke !== undefined) {
+		// a card names it above its title; where the card's identity is its area, a chip does
+		if (includePrimary || notation.colour.nodes === 'area') chips.push(bespokeChip());
+		used.bespoke = true;
 	}
 	for (const pid of e.patterns ?? []) {
 		const p = scene.patterns.get(pid);
@@ -541,8 +568,8 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 	if (e.subtitle) width = Math.max(width, Math.min(S.nodeMaxW, measure(e.subtitle, T.nodeSubtitle, 'r') + left + pad));
 	for (const part of e.parts ?? []) {
 		const pp = part.pattern ? scene.patterns.get(part.pattern) : undefined;
-		const label = part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
-		const cw = label ? measure(label, T.chip, 's') + CHIP_PAD * 2 + (part.pattern ? CHIP_ICON + 3 : 0) : 0;
+		const label = part.bespoke !== undefined ? 'bespoke' : part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
+		const cw = label ? measure(label, T.chip, 's') + CHIP_PAD * 2 + (part.pattern ? CHIP_ICON + 3 + (part.patternFit === 'partial' ? 12 : 0) : 0) : 0;
 		width = Math.max(width, Math.min(S.nodeMaxW + 60, measure(part.title, T.part, 'm') + 9 + 14 + cw + left + pad));
 	}
 	for (const f of e.fields ?? []) {
@@ -625,6 +652,7 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 			headerFill = C.white;
 			bandFill = C.white;
 		}
+		if (id.bespoke) bandFill = style === 'removed' ? C.faint : C.slate;
 		const clip = { 'clip-path': `url(#${clipId})` };
 		out.push(
 			g(
@@ -646,7 +674,7 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 		let by = 10;
 		if (id.label) {
 			const lbl = truncate(id.label, width - tx - pad - (badge ? badgeWidth(badge) + 6 : 0) - (id.partial ? 16 : 0), T.patternLabel, 'b');
-			if (id.proposed) {
+			if (id.proposed || id.bespoke) {
 				const lw = measure(lbl, T.patternLabel, 'b', 0.05) + 8;
 				out.push(rect(tx - 4, by - 1, lw, 14, { fill: C.white, stroke: fg, 'stroke-width': 1, 'stroke-dasharray': '3 2', rx: 2 }));
 			}
@@ -693,13 +721,21 @@ export function measureNode(n: SceneNode, scene: Scene, used: Used): Measured {
 			const pt = truncate(part.title, inner * 0.55, T.part, 'm');
 			out.push(text(left + 9, py + 13.5, pt, { size: T.part, weight: 500, fill: pfg }));
 			const pp = part.pattern ? scene.patterns.get(part.pattern) : undefined;
-			const label = part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
+			const label = part.bespoke !== undefined ? 'bespoke' : part.pattern === null ? 'no pattern' : (pp?.label ?? part.pattern ?? '');
 			if (part.pattern) used.patterns.set(part.pattern, (used.patterns.get(part.pattern) ?? 0) + 1);
 			if (part.pattern === null) used.noPattern = true;
+			if (part.bespoke !== undefined) used.bespoke = true;
+			const partial = !!part.pattern && part.patternFit === 'partial';
+			if (partial) used.partial = true;
 			if (label) {
-				const c = part.pattern === null ? chip({ kind: 'nopattern', text: label }) : patternChip(pp, part.pattern!, profile, notation.colour.nodes === 'pattern', false);
+				const c =
+					part.bespoke !== undefined
+						? bespokeChip()
+						: part.pattern === null
+							? chip({ kind: 'nopattern', text: label })
+							: patternChip(pp, part.pattern!, profile, notation.colour.nodes === 'pattern', partial);
 				const cw = Math.min(c.width, inner - (measure(pt, T.part, 'm') + 14));
-				out.push(drawChip(width - pad - cw, py + 1.5, { ...c, width: cw, text: truncate(c.text, cw - (c.icon ? CHIP_ICON + 3 : 0) - CHIP_PAD * 2, T.chip, 's') }, ctx));
+				out.push(drawChip(width - pad - cw, py + 1.5, { ...c, width: cw, text: truncate(c.text, cw - (c.icon ? CHIP_ICON + 3 : 0) - (c.partial ? 12 : 0) - CHIP_PAD * 2, T.chip, 's') }, ctx));
 			}
 		});
 		libLayout.rows.forEach((row, i) => {
@@ -811,6 +847,8 @@ export function measureFrame(n: SceneNode, scene: Scene, used: Used): FrameMeasu
 	const badge = dropped ? DROPPED_BADGE : changeBadge(profile, e.change);
 	const title = e.title.toUpperCase();
 	const chips = elementChips(n, scene, used);
+	// a frame has no identity line above its title: a chip says it is a one-off
+	if (e.bespoke !== undefined && notation.colour.nodes !== 'area') chips.unshift(bespokeChip());
 	const libs = libraryChips(n, scene, used);
 	const allChips = [...chips, ...libs];
 	const mapping = mappingText(e, scene);

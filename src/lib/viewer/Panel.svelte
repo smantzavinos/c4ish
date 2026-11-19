@@ -19,7 +19,7 @@
 	const patternInfo = (pid: string) => {
 		const p = scene.patterns.get(pid);
 		const fam = p ? profile.patternFamilies[p.family] : undefined;
-		return { id: pid, label: p?.label ?? pid, family: fam?.label, colour: p?.colour ?? fam?.colour ?? '#64748b', status: p?.status, catalog: p?.catalog, description: p?.description };
+		return { id: pid, label: p?.label ?? pid, family: fam?.label, colour: p?.colour ?? fam?.colour ?? '#64748b', status: p?.status, catalog: p?.catalog, description: p?.description, code: p?.code };
 	};
 	const contract = $derived(edge?.rel.contract ? scene.model.contracts?.find((c) => c.id === edge!.rel.contract) : undefined);
 </script>
@@ -33,9 +33,10 @@
 		<h2>{e.title}</h2>
 		{#if e.subtitle}<p class="sub">{e.subtitle}</p>{/if}
 
-		{#if e.pattern || e.pattern === null || e.patterns?.length}
+		{#if e.pattern || e.pattern === null || e.bespoke !== undefined || e.patterns?.length}
 			<h3>Pattern</h3>
 			{#if e.pattern === null}<p class="muted"><em>Deliberately no pattern.</em></p>{/if}
+			{#if e.bespoke !== undefined}<p><span class="tag bespoke">bespoke</span> {e.bespoke}</p>{/if}
 			{#each [e.pattern, ...(e.patterns ?? [])].filter((p): p is string => !!p) as pid, i (pid)}
 				{@const p = patternInfo(pid)}
 				<div class="pattern" style:--c={p.colour}>
@@ -45,6 +46,9 @@
 					{#if i > 0}<span class="tag">tag</span>{/if}
 					<div class="muted small">{p.family ?? ''} · <code>{p.id}</code></div>
 					{#if p.description}<p class="small">{p.description}</p>{/if}
+					{#if p.code?.length}
+						<div class="small">Reference: {#each p.code as ref, j (ref)}{j ? ', ' : ''}<code>{ref}</code>{/each}</div>
+					{/if}
 					{#if p.catalog}
 						<div class="small">Catalog: {#if isUrl(p.catalog)}<a href={p.catalog} target="_blank" rel="noreferrer">{p.catalog}</a>{:else}<code>{p.catalog}</code>{/if}</div>
 					{/if}
@@ -56,7 +60,10 @@
 			<h3>Parts</h3>
 			<ul>
 				{#each e.parts as part (part.title)}
-					<li>{part.title}{#if part.pattern} — <span class="muted">{patternInfo(part.pattern).label}</span>{/if}</li>
+					<li>
+						{part.title}{#if part.pattern} — <span class="muted">{patternInfo(part.pattern).label}{part.patternFit === 'partial' ? ' (partial fit)' : ''}</span>{/if}
+						{#if part.bespoke !== undefined} — <span class="tag bespoke">bespoke</span> <span class="muted">{part.bespoke}</span>{/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}
@@ -220,6 +227,12 @@
 	}
 	.tag.proposed {
 		border-style: dashed;
+	}
+	.tag.bespoke {
+		margin-left: 0;
+		border: 1px dashed #475569;
+		color: #0f172a;
+		font-weight: 700;
 	}
 	.change {
 		color: #0f172a;

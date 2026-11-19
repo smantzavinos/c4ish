@@ -188,3 +188,148 @@ describe('code references', () => {
 		expect(codes(m)).toEqual(['model-schema']);
 	});
 });
+
+describe('bespoke', () => {
+	const svc = (m: Model) => m.elements[1];
+	const bespoke = (edit: (m: Model) => void) => {
+		const m = clone(base);
+		delete svc(m).pattern;
+		svc(m).bespoke = 'One caller; the queue pattern would add a table for nothing.';
+		edit(m);
+		return check(m).diagnostics.map((d) => `${d.code}: ${d.message}`);
+	};
+	it('stands in place of a pattern, with a reason', () => {
+		expect(bespoke(() => {})).toEqual([]);
+		// further patterns may still apply
+		expect(bespoke((m) => void (svc(m).patterns = ['api/guard']))).toEqual([]);
+	});
+	it('needs a reason', () => {
+		expect(bespoke((m) => void (svc(m).bespoke = ''))).toEqual(['model-schema: must NOT have fewer than 1 characters']);
+		expect(bespoke((m) => void (svc(m).bespoke = '  '))).toEqual(['bespoke-without-reason: element is bespoke but gives no reason']);
+	});
+	it('cannot stand beside a pattern, "no pattern" or a fit', () => {
+		expect(bespoke((m) => void (svc(m).pattern = 'api/mutation'))).toEqual(['bespoke-with-pattern: element is bespoke and also states pattern "api/mutation"; state one']);
+		expect(bespoke((m) => void (svc(m).pattern = null))).toEqual(['bespoke-with-pattern: element is bespoke and also states no pattern; state one']);
+		expect(bespoke((m) => void (svc(m).patternFit = 'partial'))).toEqual(['bespoke-with-pattern: element is bespoke and also states a pattern fit; a fit belongs to a pattern']);
+	});
+	it('holds for a part as for an element', () => {
+		expect(bespoke((m) => void (svc(m).parts = [{ title: 'retry', bespoke: 'Only this caller retries.' }, { title: 'guard', pattern: 'api/guard', patternFit: 'partial' }]))).toEqual([]);
+		expect(bespoke((m) => void (svc(m).parts = [{ title: 'retry', bespoke: 'x', pattern: 'api/guard' }]))).toEqual([
+			'bespoke-with-pattern: part "retry" is bespoke and also states pattern "api/guard"; state one'
+		]);
+	});
+});
+
+describe('missing pattern', () => {
+	const missing = (edit: (m: Model) => void, profile?: unknown) => {
+		const m = clone(base);
+		edit(m);
+		return check(m, profile)
+			.diagnostics.filter((d) => d.code === 'missing-pattern')
+			.map((d) => `${d.severity} ${d.at}: ${d.message}`);
+	};
+	const svc = (m: Model) => m.elements[1];
+	it('warns on new or modified code or data that states neither a pattern nor bespoke', () => {
+		expect(missing((m) => void delete svc(m).pattern)).toEqual(['warning svc: new component states neither a pattern nor "bespoke" with a reason']);
+		expect(
+			missing((m) => {
+				delete m.elements[2].pattern;
+				m.elements[2].change = 'modified';
+			})
+		).toEqual(['warning tbl: modified data states neither a pattern nor "bespoke" with a reason']);
+	});
+	it('accepts a pattern, "no pattern", bespoke, or parts that each state one', () => {
+		expect(missing(() => {})).toEqual([]);
+		expect(missing((m) => void (svc(m).pattern = null))).toEqual([]);
+		expect(
+			missing((m) => {
+				delete svc(m).pattern;
+				svc(m).bespoke = 'One-off.';
+			})
+		).toEqual([]);
+		const parts = (second: object) => (m: Model) => {
+			delete svc(m).pattern;
+			svc(m).parts = [{ title: 'a', pattern: 'api/guard' }, { title: 'b', ...second }];
+		};
+		expect(missing(parts({ bespoke: 'One-off.' }))).toEqual([]);
+		expect(missing(parts({}))).toEqual(['warning svc: new component states neither a pattern nor "bespoke" with a reason (on itself or on each of its parts)']);
+	});
+	it('leaves alone what is unchanged, removed, or not code or data', () => {
+		expect(
+			missing((m) => {
+				delete svc(m).pattern;
+				svc(m).change = 'reused';
+			})
+		).toEqual([]);
+		expect(
+			missing((m) => {
+				delete svc(m).pattern;
+				svc(m).change = 'removed';
+				m.relationships![0].change = 'removed';
+			})
+		).toEqual([]);
+		// the container is modified and has no pattern
+		expect(missing(() => {})).toEqual([]);
+		expect(missing((m) => void m.elements.push({ id: 'who', kind: 'person', title: 'Clerk', change: 'new' }))).toEqual([]);
+	});
+	it('follows the category of the kind and the severity of the rule in the profile', () => {
+		const profile = (extra: object) => ({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', ...extra });
+		const job = (m: Model) => void m.elements.push({ id: 'job', kind: 'job', parent: 'app', title: 'Nightly job', change: 'new' });
+		expect(missing(job, profile({ elementKinds: { job: { label: 'Job' } } }))).toEqual([]);
+		expect(missing(job, profile({ elementKinds: { job: { label: 'Job', category: 'code' } } }))).toEqual(['warning job: new job states neither a pattern nor "bespoke" with a reason']);
+		const drop = (m: Model) => void delete svc(m).pattern;
+		expect(missing(drop, profile({ rules: { missingPattern: 'error' } }))).toEqual(['error svc: new component states neither a pattern nor "bespoke" with a reason']);
+		expect(missing(drop, profile({ rules: { missingPattern: 'off' } }))).toEqual([]);
+		expect(codes(clone(base), profile({ elementKinds: { job: { label: 'Job', category: 'thing' } } }))).toEqual(['profile-schema']);
+	});
+});
+
+describe('scenarios', () => {
+	const step = (scenarios?: string[]) => ({ id: 's', title: 'S', view: 'eng', focus: ['app', 'svc', 'w'], ...(scenarios && { scenarios }) });
+	const withScenarios = (ids: string[], walked?: string[], tour = true): Model => ({
+		...clone(base),
+		scenarios: ids.map((id) => ({ id, title: `Scenario ${id}` })),
+		...(tour && { tours: [{ id: 'review', title: 'Review', steps: [step(walked)] }] })
+	});
+	const said = (m: Model, profile?: unknown) => check(m, profile).diagnostics.map((d) => `${d.severity} ${d.code}: ${d.message}`);
+	it('pass when a step walks each', () => {
+		expect(said(withScenarios(['S1', 'S2'], ['S1', 'S2']))).toEqual([]);
+	});
+	it('reports a scenario no step walks, with or without a tour', () => {
+		const unwalked = 'warning scenario-coverage: scenario "Scenario S2" (S2) is walked by no tour step — name it in the "scenarios" of the steps that show it';
+		expect(said(withScenarios(['S1', 'S2'], ['S1']))).toEqual([unwalked]);
+		expect(said(withScenarios(['S2'], undefined, false))).toEqual([unwalked]);
+	});
+	it('counts a step of any tour', () => {
+		const m = withScenarios(['S1', 'S2'], ['S1']);
+		m.tours!.push({ id: 'second', title: 'Second', steps: [step(['S2'])] });
+		expect(said(m)).toEqual([]);
+	});
+	it('rejects a step that names a scenario the model does not have, and an id used twice', () => {
+		expect(said(withScenarios(['S1'], ['S1', 'S9']))).toEqual(['error unknown-ref: scenario "S9" is not in the model\'s scenarios']);
+		expect(said(withScenarios(['S1', 'S1'], ['S1']))).toEqual(['error duplicate-id: scenario id "S1" is not unique']);
+	});
+	it('takes its severity from the tour coverage rule', () => {
+		const profile = (tourCoverage: string) => ({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', rules: { tourCoverage } });
+		expect(said(withScenarios(['S1']), profile('error')).map((d) => d.split(':')[0])).toEqual(['error scenario-coverage']);
+		expect(said(withScenarios(['S1']), profile('off'))).toEqual([]);
+	});
+});
+
+describe('pattern reference implementations', () => {
+	const profile = (code: string[]) => ({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', patterns: { 'api/job': { label: 'job', family: 'api', code } } });
+	it('are code references, on a pattern of the profile and on a proposed one', () => {
+		expect(codes(base, profile(['src/jobs/nightly.ts#run', 'src/jobs/README.md']))).toEqual([]);
+		const m = clone(base);
+		m.proposedPatterns = [{ id: 'api/new-thing', label: 'new thing', family: 'api', code: ['src/thing.ts#Thing.make'] }];
+		expect(codes(m)).toEqual([]);
+	});
+	it('are rejected when they are not references', () => {
+		const res = check(base, profile(['/abs/nightly.ts', 'src/a.ts', 'src/a.ts']));
+		expect(res.ok).toBe(false);
+		expect(res.diagnostics.map((d) => `${d.code} ${d.at}`)).toEqual(['invalid-code-ref profile:pattern:api/job', 'invalid-code-ref profile:pattern:api/job']);
+		const m = clone(base);
+		m.proposedPatterns = [{ id: 'api/new-thing', label: 'new thing', family: 'api', code: ['src/thing.ts#'] }];
+		expect(check(m).diagnostics.map((d) => `${d.code} ${d.at}`)).toEqual(['invalid-code-ref api/new-thing']);
+	});
+});

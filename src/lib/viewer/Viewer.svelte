@@ -9,6 +9,7 @@
 	import LegendPanel from './LegendPanel.svelte';
 	import Panel from './Panel.svelte';
 	import TourCard from './TourCard.svelte';
+	import { stepScenarios } from '../model/tours.js';
 	import { stepBounds } from '../render/tour.js';
 	import { currentStep, explore, gotoStep, startTour, stepFilter, tourFromHash, tourHash, type TourState } from './tour.js';
 	import { classify, initialState, isHighlighted, itemKeys, toggleHighlight, type FilterState, type ViewerExample } from './state.js';
@@ -354,6 +355,7 @@
 					index={tourState.index}
 					exploring={tourState.exploring}
 					notes={stepNotes}
+					scenarios={stepScenarios(checked?.model ?? {}, active.step)}
 					onprev={() => applyStep(gotoStep(tourState!, active.tour, tourState!.index - 1))}
 					onnext={() => applyStep(gotoStep(tourState!, active.tour, tourState!.index + 1))}
 					ongoto={(i) => applyStep(gotoStep(tourState!, active.tour, i))}

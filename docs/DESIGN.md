@@ -66,6 +66,11 @@ Profiles can define lifecycle states (for example draft and released) with their
 - A **proposed** pattern is marked distinctly: it is the thing a reviewer must look at.
 - A **divergence** (code that doesn't follow its declared pattern, or an implementation that differs from intent) carries a marker on the element or edge that is wrong, not in a footnote.
 
+- A **bespoke** element is a one-off that follows no pattern on purpose. It states its reason, is drawn as its own state and is a review item when the change adds or alters it.
+
+### Scenarios
+A model can list the scenarios the change must make possible, by id and title. Each tour step names the ones it walks, so the reviewer sees what a step is evidence for, and a scenario that nothing walks is reported. The scenario's detail stays in the plan text: the model holds only enough to tie the tour to it (DECISIONS 49).
+
 ### Code references
 An element, or one of its parts, can name the code it stands for: `code: ["path", "path#Name", "path#Outer.Inner"]`. This ties a model to code; it does not derive one from the other.
 - A reference is a **name**, found by parsing the file (tree-sitter). No line numbers or syntax-tree nodes are stored, so a reference survives edits around it.

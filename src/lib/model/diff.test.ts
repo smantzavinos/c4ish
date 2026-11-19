@@ -345,6 +345,67 @@ describe('diffModels: data', () => {
 	});
 });
 
+describe('diffModels: bespoke', () => {
+	const bespoke = (was: string | undefined, is: string | undefined) => {
+		const before = clone(base);
+		const after = clone(base);
+		for (const [m, reason] of [
+			[before, was],
+			[after, is]
+		] as const) {
+			delete el(m, 'ui').pattern;
+			if (reason !== undefined) el(m, 'ui').bespoke = reason;
+			delete el(m, 'svc').parts![1].pattern;
+			if (reason !== undefined) el(m, 'svc').parts![1].bespoke = reason;
+		}
+		return diffModels(before, after).differences.flatMap((d) => (d.fields ?? []).map((f) => `${d.id} ${f.path.join('.')}: ${f.aspect} ${f.change}`));
+	};
+	it('becoming or ceasing to be bespoke is structure, on an element and on a part', () => {
+		expect(bespoke(undefined, 'One caller.')).toEqual(['ui bespoke: structure added', 'svc parts.writer.bespoke: structure added']);
+		expect(bespoke('One caller.', undefined)).toEqual(['ui bespoke: structure removed', 'svc parts.writer.bespoke: structure removed']);
+	});
+	it('rewording the reason is text', () => {
+		expect(bespoke('One caller.', 'One caller, and no second one planned.')).toEqual(['ui bespoke: text changed', 'svc parts.writer.bespoke: text changed']);
+		expect(bespoke('One caller.', 'One caller.')).toEqual([]);
+	});
+	it('a pattern giving way to bespoke is two structure differences, and --only text hides both', () => {
+		const d = edited((m) => {
+			delete el(m, 'ui').pattern;
+			el(m, 'ui').bespoke = 'One caller.';
+		});
+		expect(fields(d).sort()).toEqual(['bespoke: structure added', 'pattern: structure removed']);
+		expect(filterDiff(d, ['text']).differences).toEqual([]);
+	});
+});
+
+describe('diffModels: scenarios', () => {
+	const withScenarios = (...ids: string[]) => (m: Model) => void (m.scenarios = ids.map((id) => ({ id, title: `Scenario ${id}` })));
+	const scenarios = (was: (m: Model) => void, is: (m: Model) => void) => {
+		const before = clone(base);
+		const after = clone(base);
+		was(before);
+		is(after);
+		return diffModels(before, after).differences.map((x) => `${x.kind} ${x.id} ${x.change} ${x.aspects}`);
+	};
+	it('a scenario added or dropped is structure, matched by id whatever the order', () => {
+		expect(scenarios(withScenarios('S1'), withScenarios('S2', 'S1'))).toEqual(['scenario S2 added structure']);
+		expect(scenarios(withScenarios('S1', 'S2'), withScenarios('S2'))).toEqual(['scenario S1 removed structure']);
+		expect(scenarios(withScenarios('S1', 'S2'), withScenarios('S2', 'S1'))).toEqual([]);
+	});
+	it('its title is text; the steps that walk it are presentation', () => {
+		const retitled = (m: Model) => {
+			withScenarios('S1')(m);
+			m.scenarios![0].title = 'Reworded';
+		};
+		expect(scenarios(withScenarios('S1'), retitled)).toEqual(['scenario S1 changed text']);
+		const walked = (m: Model) => {
+			withScenarios('S1')(m);
+			m.tours![0].steps[0].scenarios = ['S1'];
+		};
+		expect(scenarios(withScenarios('S1'), walked)).toEqual(['tour review changed presentation']);
+	});
+});
+
 describe('diffModels: parts', () => {
 	it('a part with an id keeps its identity when retitled; without one the title is its name', () => {
 		const d = edited((m) => {
@@ -359,6 +420,11 @@ describe('diffModels: parts', () => {
 			'parts.writer.pattern: structure changed',
 			'parts.writer.title: text changed'
 		]);
+	});
+
+	it("a part's fit is structure, and a missing one means full", () => {
+		expect(edited((m) => void (el(m, 'svc').parts![1].patternFit = 'full')).differences).toEqual([]);
+		expect(fields(edited((m) => void (el(m, 'svc').parts![1].patternFit = 'partial')))).toEqual(['parts.writer.patternFit: structure changed']);
 	});
 
 	it("a part's code references are code", () => {
@@ -457,6 +523,11 @@ describe('diffModels: notes, absences, patterns, views and the model itself', ()
 			m.notes![2].text = 'A remark, reworded';
 		});
 		expect(d.differences.map((x) => `${x.id} ${x.change}`)).toEqual(['(note on tbl #1) added', '(note on svc #1) changed']);
+	});
+
+	it("a proposed pattern's reference implementation is code", () => {
+		const d = edited((m) => void (m.proposedPatterns![0].code = ['src/batch.ts#run']));
+		expect(d.differences.map((x) => `${x.kind} ${x.id} ${x.change} ${x.aspects}`)).toEqual(['pattern api/batch changed code']);
 	});
 
 	it('absences and proposed patterns are structure', () => {
@@ -559,7 +630,7 @@ describe('aspect table', () => {
 	type Schema = { properties?: Record<string, Schema>; items?: Schema };
 	const top = modelSchema.properties as unknown as Record<string, Schema>;
 	const element = top.elements.items!.properties!;
-	const collections = ['views', 'elements', 'relationships', 'contracts', 'notes', 'absences', 'proposedPatterns', 'tours'];
+	const collections = ['views', 'elements', 'relationships', 'contracts', 'notes', 'absences', 'proposedPatterns', 'tours', 'scenarios'];
 	const tables: [keyof typeof ASPECTS, string[]][] = [
 		['model', Object.keys(top).filter((k) => !collections.includes(k))],
 		['element', Object.keys(element)],
@@ -571,7 +642,8 @@ describe('aspect table', () => {
 		['contract', Object.keys(top.contracts.items!.properties!)],
 		['note', Object.keys(top.notes.items!.properties!)],
 		['absence', Object.keys(top.absences.items!.properties!)],
-		['pattern', Object.keys(top.proposedPatterns.items!.properties!)]
+		['pattern', Object.keys(top.proposedPatterns.items!.properties!)],
+		['scenario', Object.keys(top.scenarios.items!.properties!)]
 	];
 	for (const [table, props] of tables)
 		it(`names every ${table} property in the schema, and nothing else`, () => {
@@ -741,6 +813,24 @@ describe('differenceModel', () => {
 			view: 'data',
 			select: 'log'
 		});
+	});
+
+	it('a scenario that came or went has a step in words, and the review model keeps no scenarios', () => {
+		const before = clone(base);
+		before.scenarios = [{ id: 'S1', title: 'Save an item' }];
+		const after = clone(base);
+		after.scenarios = [{ id: 'S2', title: 'Save two items' }];
+		after.tours![0].steps[0].scenarios = ['S2'];
+		expect(check(after).diagnostics).toEqual([]);
+		const review = differenceModel(before, after, profile, diffModels(before, after));
+		// its one generated tour walks differences: a kept scenario would be reported as unwalked
+		expect(review.scenarios).toBeUndefined();
+		expect(check(review).diagnostics.filter((d) => d.code === 'scenario-coverage' || d.severity === 'error')).toEqual([]);
+		const steps = review.tours![0].steps;
+		expect(steps.map((s) => s.id)).toEqual(['overview', 'scenario:S2', 'scenario:S1']);
+		expect(steps[1]).toMatchObject({ title: 'Added: Save two items', view: 'eng', body: '**Added** scenario `S2`.' });
+		expect(steps[2]).toMatchObject({ title: 'Dropped: Save an item', body: '**Dropped** scenario `S1`. It was: Save an item' });
+		expect(steps[1].focus).toBeUndefined();
 	});
 
 	it('views, tours and the model itself are listed in the overview only', () => {

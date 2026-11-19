@@ -30,9 +30,14 @@ export interface RefHint {
 	ref: string;
 }
 
-export interface RefReport {
+/** A pattern of a profile whose reference implementation a reference names. */
+export interface PatternOwner {
+	pattern: string;
+}
+
+export interface RefReport<Owner = RefOwner> {
 	ref: string;
-	owners: RefOwner[];
+	owners: Owner[];
 	head: RefSide;
 	/** Present when a base commit was given. */
 	base?: RefSide;
@@ -66,11 +71,11 @@ export interface FileChange {
 	head: ChangedLines[];
 }
 
-export interface CodeReport {
+export interface CodeReport<Owner = RefOwner> {
 	root: string;
 	/** The base commit, resolved. Absent when references were only resolved in the working tree. */
 	base?: string;
-	references: RefReport[];
+	references: RefReport<Owner>[];
 	/** Every file that differs between the base and the working tree, untracked files included. */
 	files?: FileChange[];
 	/** Changed lines that sit inside no reference. */
@@ -246,6 +251,31 @@ function regionsOf(ref: string, side: RefSide | undefined): Region[] {
  * It reports facts only. What a difference means is the caller's business.
  */
 export async function codeReport(model: Model, profile: Profile, options: CodeReportOptions): Promise<CodeReport> {
+	// One entry per distinct reference, with everything in the model that carries it.
+	const owners = new Map<string, RefOwner[]>();
+	const own = (raw: string, owner: RefOwner) => {
+		const style = owner.change === undefined ? undefined : profile.changeStates[owner.change]?.style;
+		owners.set(raw, [...(owners.get(raw) ?? []), { ...owner, ...(style ? { style } : {}) }]);
+	};
+	for (const e of model.elements) {
+		for (const raw of e.code ?? []) own(raw, { element: e.id, ...(e.change ? { change: e.change } : {}) });
+		for (const p of e.parts ?? []) for (const raw of p.code ?? []) own(raw, { element: e.id, part: p.title, ...(p.change ? { change: p.change } : {}) });
+	}
+	return report(owners, options, true);
+}
+
+/**
+ * The same report for the reference implementations of a profile's patterns (`PatternDef.code`).
+ * It says where each is and, with a base, what changed in it; it does not list the changed lines
+ * of the repository, since a catalog owns only its reference implementations.
+ */
+export async function patternCodeReport(profile: Pick<Profile, 'patterns'>, options: CodeReportOptions): Promise<CodeReport<PatternOwner>> {
+	const owners = new Map<string, PatternOwner[]>();
+	for (const [id, p] of Object.entries(profile.patterns)) for (const raw of p.code ?? []) owners.set(raw, [...(owners.get(raw) ?? []), { pattern: id }]);
+	return report(owners, options, false);
+}
+
+async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOptions, withChanges: boolean): Promise<CodeReport<Owner>> {
 	const root = options.root;
 	const base = options.base === undefined ? undefined : git(root, ['rev-parse', '--verify', `${options.base}^{commit}`]).trim();
 
@@ -264,19 +294,8 @@ export async function codeReport(model: Model, profile: Profile, options: CodeRe
 					}
 				});
 
-	// One entry per distinct reference, with everything in the model that carries it.
-	const owners = new Map<string, RefOwner[]>();
-	const own = (raw: string, owner: RefOwner) => {
-		const style = owner.change === undefined ? undefined : profile.changeStates[owner.change]?.style;
-		owners.set(raw, [...(owners.get(raw) ?? []), { ...owner, ...(style ? { style } : {}) }]);
-	};
-	for (const e of model.elements) {
-		for (const raw of e.code ?? []) own(raw, { element: e.id, ...(e.change ? { change: e.change } : {}) });
-		for (const p of e.parts ?? []) for (const raw of p.code ?? []) own(raw, { element: e.id, part: p.title, ...(p.change ? { change: p.change } : {}) });
-	}
-
 	const changes = base === undefined ? undefined : changesSince(root, base);
-	const references: RefReport[] = [];
+	const references: RefReport<Owner>[] = [];
 	const resolved = new Map<string, { ref: CodeRef; head: Resolved; base?: Resolved }>();
 
 	for (const [raw, who] of owners) {
@@ -288,7 +307,7 @@ export async function codeReport(model: Model, profile: Profile, options: CodeRe
 		const h = await resolveRef(ref, head);
 		const b = before ? await resolveRef(ref, before) : undefined;
 		resolved.set(raw, { ref, head: h, base: b });
-		const report: RefReport = { ref: raw, owners: who, head: publicSide(h), ...(b ? { base: publicSide(b) } : {}) };
+		const report: RefReport<Owner> = { ref: raw, owners: who, head: publicSide(h), ...(b ? { base: publicSide(b) } : {}) };
 
 		const unusable = [h, b].find((s) => s && (s.status === 'unsupported' || s.status === 'ambiguous'));
 		if (unusable) report.problem = unusable.detail;
@@ -311,8 +330,8 @@ export async function codeReport(model: Model, profile: Profile, options: CodeRe
 		references.push(report);
 	}
 
-	const out: CodeReport = { root, ...(base ? { base } : {}), references, problems: references.filter((r) => r.problem).length };
-	if (changes) {
+	const out: CodeReport<Owner> = { root, ...(base ? { base } : {}), references, problems: references.filter((r) => r.problem).length };
+	if (changes && withChanges) {
 		const regions = (path: string, side: 'head' | 'base') =>
 			[...resolved].filter(([, r]) => r.ref.path === path).flatMap(([raw, r]) => regionsOf(raw, r[side]));
 		out.files = changes.map((c) => ({

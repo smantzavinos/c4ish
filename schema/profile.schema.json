@@ -54,6 +54,14 @@
 						"items": {
 							"type": "string"
 						}
+					},
+					"category": {
+						"enum": [
+							"container",
+							"code",
+							"data",
+							"product"
+						]
 					}
 				}
 			}
@@ -120,6 +128,12 @@
 					},
 					"description": {
 						"type": "string"
+					},
+					"code": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
 					}
 				}
 			}
@@ -408,6 +422,13 @@
 					]
 				},
 				"tourCoverage": {
+					"enum": [
+						"error",
+						"warning",
+						"off"
+					]
+				},
+				"missingPattern": {
 					"enum": [
 						"error",
 						"warning",
