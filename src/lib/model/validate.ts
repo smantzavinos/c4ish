@@ -4,6 +4,7 @@ import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Divergence, Element, Model, Part, Profile, ProfileInput, Severity, View } from './types.js';
 import { modelSchema, profileSchema } from './schema.js';
 import { parseCodeRef } from '../code/reference.js';
+import { resolveProfile } from '../profile/resolve.js';
 import { partKey, tieKey } from './diff.js';
 
 export interface Diagnostic {
@@ -52,10 +53,16 @@ export function validateProfileSchema(json: unknown): Diagnostic[] {
 	return v(json) ? [] : schemaDiagnostics(v.errors, 'profile');
 }
 
-/** Semantics of a profile as written: the code references of its patterns. */
-export function validateProfile(profile: Pick<ProfileInput, 'patterns'>): Diagnostic[] {
+/**
+ * Semantics of a profile as written: the code references of its patterns, and, in the profile it
+ * resolves to, that every pattern's family is there (replacing a catalog can leave one behind).
+ */
+export function validateProfile(profile: ProfileInput): Diagnostic[] {
 	const out: Diagnostic[] = [];
 	for (const [id, p] of Object.entries(profile.patterns ?? {})) out.push(...codeRefDiagnostics(p.code, `profile:pattern:${id}`));
+	const resolved = resolveProfile(profile);
+	for (const [id, p] of Object.entries(resolved.patterns))
+		if (!resolved.patternFamilies[p.family]) out.push({ severity: 'error', code: 'unknown-pattern-family', message: `pattern family "${p.family}" is not in the profile`, at: `profile:pattern:${id}` });
 	return out;
 }
 

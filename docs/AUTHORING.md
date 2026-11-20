@@ -189,7 +189,7 @@ Items are matched by **id**, so ids must not change between versions. An item is
 
 ## The profile
 
-A project profile holds the vocabulary a model draws on: element kinds, the pattern catalog, relationship kinds, enforcement, change states and the lint rules. `"extends": "default"` adds to the built-in one.
+A project profile holds the vocabulary a model draws on: element kinds, the pattern catalog, relationship kinds, enforcement, change states and the lint rules. `"extends": "default"` adds to the built-in one. `"replaces": ["patterns", "patternFamilies"]` beside it names the catalogs that take nothing from the built-in one: a project with its own pattern catalog lists them, so that the built-in sample patterns are not there to be used.
 
 ```bash
 c4ish profile                      # the default profile, as JSON

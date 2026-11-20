@@ -269,12 +269,16 @@ export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'long-dash' | 'double';
 export type ArrowHead = 'filled' | 'open' | 'diamond' | 'none';
 export type Corners = 'sharp' | 'rounded';
 
+export type ProfileCatalog = 'elementKinds' | 'patternFamilies' | 'patterns' | 'relationshipKinds' | 'enforcement' | 'changeStates' | 'lifecycle' | 'areas' | 'views';
+
 export interface Profile {
 	profileVersion: 0;
 	id: string;
 	title: string;
 	/** "default" = the built-in c4ish default profile; entries here override/add. */
 	extends?: string;
+	/** Catalogs that take nothing from the extended profile: they hold only this profile's entries. */
+	replaces?: ProfileCatalog[];
 	elementKinds: Record<string, ElementKindDef>;
 	patternFamilies: Record<string, PatternFamilyDef>;
 	patterns: Record<string, Omit<PatternDef, 'id'>>;

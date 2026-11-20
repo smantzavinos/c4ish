@@ -300,6 +300,11 @@ export const profileSchema = {
 		id: text,
 		title: text,
 		extends: text,
+		replaces: {
+			type: 'array',
+			uniqueItems: true,
+			items: { enum: ['elementKinds', 'patternFamilies', 'patterns', 'relationshipKinds', 'enforcement', 'changeStates', 'lifecycle', 'areas', 'views'] }
+		},
 		elementKinds: record({
 			type: 'object',
 			required: ['label'],

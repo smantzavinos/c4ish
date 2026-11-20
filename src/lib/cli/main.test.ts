@@ -79,7 +79,7 @@ describe('c4ish code', () => {
 		expect(alone).toContain('not looked for: its element is removed');
 
 		// a profile's reference implementations, at a commit
-		writeFileSync(join(root, 'profile.json'), JSON.stringify({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', patterns: { 'a/old': { label: 'OLD', family: 'runtime', code: ['sum.ts#old'] } } }));
+		writeFileSync(join(root, 'profile.json'), JSON.stringify({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', patterns: { 'a/old': { label: 'OLD', family: 'api', code: ['sum.ts#old'] } } }));
 		expect(c4ish('code', join(root, 'profile.json'), '--head', base)).toMatch(/resolved\s+sum\.ts#old/);
 		expect(() => c4ish('code', join(root, 'profile.json'))).toThrow();
 	}, 60_000);

@@ -316,6 +316,36 @@ describe('scenarios', () => {
 	});
 });
 
+describe('a profile that replaces a catalog', () => {
+	const own = { patternFamilies: { svc: { label: 'Service', icon: 'query', colour: '#2563eb' } }, patterns: { 'svc/job': { label: 'job', family: 'svc' } } };
+	const profile = (replaces?: string[]) => ({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', ...(replaces && { replaces }), ...own });
+	it('adds to the default without `replaces`, and holds only its own entries in each catalog it replaces', () => {
+		const added = resolveProfile(profile() as never);
+		expect(Object.keys(added.patterns)).toContain('api/read-query');
+		expect(Object.keys(added.patterns)).toContain('svc/job');
+		const replaced = resolveProfile(profile(['patterns', 'patternFamilies']) as never);
+		expect(Object.keys(replaced.patterns)).toEqual(['svc/job']);
+		expect(Object.keys(replaced.patternFamilies)).toEqual(['svc']);
+		// the other catalogs still come from the default
+		expect(replaced.elementKinds).toEqual(defaultProfile.elementKinds);
+		expect(replaced.replaces).toEqual(['patterns', 'patternFamilies']);
+	});
+	it('makes a dropped pattern unknown to a model', () => {
+		const m = clone(base);
+		expect(m.elements.some((e) => e.pattern === 'api/mutation')).toBe(true);
+		expect(codes(m, profile())).not.toContain('unknown-ref');
+		const res = check(m, profile(['patterns', 'patternFamilies']));
+		expect(res.ok).toBe(false);
+		expect(res.diagnostics.some((d) => d.severity === 'error' && d.message.includes('api/mutation'))).toBe(true);
+	});
+	it('is rejected when it leaves a pattern without its family, or names something that is not a catalog', () => {
+		const res = check(base, profile(['patternFamilies']));
+		expect(res.diagnostics.filter((d) => d.code === 'unknown-pattern-family').map((d) => d.at)).toContain('profile:pattern:api/read-query');
+		expect(res.ok).toBe(false);
+		expect(check(base, profile(['rules'])).ok).toBe(false);
+	});
+});
+
 describe('pattern reference implementations', () => {
 	const profile = (code: string[]) => ({ profileVersion: 0, id: 'p', title: 'P', extends: 'default', patterns: { 'api/job': { label: 'job', family: 'api', code } } });
 	it('are code references, on a pattern of the profile and on a proposed one', () => {

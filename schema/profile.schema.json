@@ -25,6 +25,23 @@
 		"extends": {
 			"type": "string"
 		},
+		"replaces": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": {
+				"enum": [
+					"elementKinds",
+					"patternFamilies",
+					"patterns",
+					"relationshipKinds",
+					"enforcement",
+					"changeStates",
+					"lifecycle",
+					"areas",
+					"views"
+				]
+			}
+		},
 		"elementKinds": {
 			"type": "object",
 			"additionalProperties": {
