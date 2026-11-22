@@ -17,14 +17,43 @@ export function panCamera(camera: Camera, dx: number, dy: number): Camera {
 	return { ...camera, x: camera.x + dx, y: camera.y + dy };
 }
 
+/** Pinch and wheel zoom share these limits; Fit keeps its own, lower, maximum. */
+function clampZoom(zoom: number): number {
+	return Math.max(0.1, Math.min(4, zoom));
+}
+
 export function zoomCamera(camera: Camera, factor: number, anchor: Point): Camera {
-	const zoom = Math.max(0.1, Math.min(4, camera.zoom * factor));
+	const zoom = clampZoom(camera.zoom * factor);
 	const ratio = zoom / camera.zoom;
 	return {
 		x: anchor.x - (anchor.x - camera.x) * ratio,
 		y: anchor.y - (anchor.y - camera.y) * ratio,
 		zoom
 	};
+}
+
+/** Distance between two pointers, in viewport pixels. */
+function spread(a: Point, b: Point): number {
+	return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+/**
+ * Camera for a two-finger pinch from `from` to `to` (viewport pixels): the fingers' midpoint drags the
+ * diagram and their spread zooms about that midpoint, so whatever was under the midpoint stays under
+ * it. It depends only on the two ends, never on the path between them or on the order of moves, so a
+ * finger joining or leaving can re-base the gesture where it is without a jump, and pushing past a
+ * zoom limit leaves no drift to undo.
+ */
+export function pinchCamera(camera: Camera, from: [Point, Point], to: [Point, Point]): Camera {
+	const base = spread(...from);
+	// fingers that land on the same pixel only pan until they part
+	const zoom = clampZoom(camera.zoom * (base > 0 ? spread(...to) / base : 1));
+	const ratio = zoom / camera.zoom;
+	const ax = (from[0].x + from[1].x) / 2;
+	const ay = (from[0].y + from[1].y) / 2;
+	const bx = (to[0].x + to[1].x) / 2;
+	const by = (to[0].y + to[1].y) / 2;
+	return { x: bx - (ax - camera.x) * ratio, y: by - (ay - camera.y) * ratio, zoom };
 }
 
 /** The diagram size includes its margin, so centring preserves room on all sides. */

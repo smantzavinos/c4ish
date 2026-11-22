@@ -9,11 +9,14 @@
 		exploring,
 		notes,
 		scenarios = [],
+		floating = false,
 		onprev,
 		onnext,
 		ongoto,
 		onresume,
-		onexit
+		onexit,
+		oncollapse,
+		onhide
 	}: {
 		tour: Tour;
 		index: number;
@@ -22,11 +25,16 @@
 		notes: DiagramNote[];
 		/** Scenarios the current step walks. */
 		scenarios?: Scenario[];
+		/** Over the diagram (the compact layout) rather than in a column of its own. */
+		floating?: boolean;
 		onprev: () => void;
 		onnext: () => void;
 		ongoto: (i: number) => void;
 		onresume: () => void;
 		onexit: () => void;
+		/** Given with `floating`: the card can be collapsed to a bar, or hidden until called back. */
+		oncollapse?: () => void;
+		onhide?: () => void;
 	} = $props();
 
 	const step = $derived(tour.steps[index]);
@@ -34,10 +42,20 @@
 	let listOpen = $state(false);
 </script>
 
-<section class="tour" aria-label="Guided tour" aria-live="polite">
+<section class="tour" class:floating aria-label="Guided tour" aria-live="polite">
 	<div class="top">
-		<span class="label">TOUR · {tour.title}</span>
-		<button class="x" onclick={onexit} aria-label="Exit tour" title="Exit tour (Esc)">×</button>
+		{#if oncollapse}
+			<button class="label fold" onclick={oncollapse} aria-label="Collapse the step card" title={tour.title}>
+				<span class="chev" aria-hidden="true">▾</span> TOUR · {tour.title}
+			</button>
+			<span class="acts">
+				{#if onhide}<button class="text" onclick={onhide}>Hide</button>{/if}
+				<button class="text" onclick={onexit} aria-label="Exit tour">Exit</button>
+			</span>
+		{:else}
+			<span class="label">TOUR · {tour.title}</span>
+			<button class="x" onclick={onexit} aria-label="Exit tour" title="Exit tour (Esc)">×</button>
+		{/if}
 	</div>
 	<div class="count">{index + 1} / {total}</div>
 	<h2>{step.title}</h2>
@@ -79,7 +97,7 @@
 			{/each}
 		</ol>
 	{/if}
-	<p class="keys">← / → step · Esc exits</p>
+	{#if !floating}<p class="keys">← / → step · Esc exits</p>{/if}
 </section>
 
 <style>
@@ -112,6 +130,79 @@
 		cursor: pointer;
 		color: #64748b;
 		padding: 0 4px;
+	}
+	/* Floating (the compact layout): the header stays in reach while the card scrolls. */
+	.tour.floating {
+		border-left: 0;
+		border-top: 4px solid #2563eb;
+		border-bottom: 0;
+	}
+	.floating .top {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		/* up to the card's top edge, and across its full width */
+		margin: -14px -16px 0;
+		padding: 10px 8px 8px 16px;
+		background: #f8fbff;
+		border-bottom: 1px solid #e2e8f0;
+	}
+	/* The step navigation is pinned the same way, at the other edge: long narration or notes do not put Next below the fold. */
+	.floating .nav {
+		position: sticky;
+		bottom: 0;
+		z-index: 1;
+		margin: 0 -16px -18px;
+		padding: 6px 16px 10px;
+		background: #f8fbff;
+		border-top: 1px solid #e2e8f0;
+	}
+	.floating .list-toggle {
+		margin-top: 16px;
+	}
+	.fold {
+		border: 0;
+		background: none;
+		padding: 0;
+		max-width: 62%;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		text-align: left;
+	}
+	.chev {
+		margin-right: 2px;
+	}
+	.acts {
+		flex: none;
+		display: flex;
+		gap: 2px;
+	}
+	.text {
+		border: 0;
+		background: none;
+		color: #1d4ed8;
+		font-weight: 600;
+	}
+	/* A finger, not a cursor: the controls are taller, and a second tap is not a double-tap zoom. */
+	.floating .fold,
+	.floating .text,
+	.floating .resume,
+	.floating .list-toggle,
+	.floating .nav > button,
+	.floating .steps button {
+		min-height: 40px;
+		touch-action: manipulation;
+	}
+	.floating .dot {
+		position: relative;
+		width: 12px;
+		height: 12px;
+	}
+	.floating .dot::after {
+		content: '';
+		position: absolute;
+		inset: -9px;
 	}
 	.count {
 		margin-top: 6px;

@@ -57,6 +57,7 @@
 		gap: 8px;
 		align-items: center;
 		width: 100%;
+		min-height: var(--legend-row, auto);
 		padding: 2px 4px;
 		border: 1px solid transparent;
 		border-radius: 4px;
@@ -67,6 +68,7 @@
 	}
 	button {
 		cursor: pointer;
+		touch-action: manipulation;
 	}
 	button:hover {
 		background: #f1f5f9;

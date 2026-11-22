@@ -3,7 +3,8 @@
 	import DiagramEdge from './DiagramEdge.svelte';
 	import DiagramNode from './DiagramNode.svelte';
 	import { opacityFor, type Emphasis } from './state.js';
-	import { fitCamera, fitRectCamera, panCamera, tweenCamera, zoomCamera, type Camera } from './camera.js';
+	import { fitCamera, fitRectCamera, panCamera, tweenCamera, zoomCamera, type Camera, type Size } from './camera.js';
+	import { dragMove, grab, release, type Drag } from './gesture.js';
 	import type { Rect } from '../layout/types.js';
 	import { BADGE_R, edgePathD, pathMarks, TOUR, viewerBadgeScale } from '../render/tour.js';
 
@@ -13,8 +14,10 @@
 		selected,
 		path = [],
 		zoom = $bindable(1),
+		stage,
 		onhover,
-		onselect
+		onselect,
+		onusercamera
 	}: {
 		diagram: Diagram;
 		emphasis: Map<string, Emphasis>;
@@ -22,6 +25,13 @@
 		/** Tour path: ordered relationship ids, drawn with a glow and numbered badges. */
 		path?: string[];
 		zoom?: number;
+		/**
+		 * The part of the viewport that no floating panel covers (the compact layout), sharing its top-left
+		 * corner. Fit, the zoom buttons and tour steps frame this; given, it replaces the whole viewport.
+		 */
+		stage?: HTMLElement;
+		/** The reader moved the camera themselves: a drag, a pinch, the wheel, a zoom button. */
+		onusercamera?: () => void;
 		onhover: (id: string | undefined) => void;
 		onselect: (id: string | undefined) => void;
 	} = $props();
@@ -32,6 +42,7 @@
 	let viewport: HTMLDivElement | undefined = $state();
 	let offset = $state({ x: 0, y: 0 });
 	const camera = $derived({ ...offset, zoom });
+	const sizeOf = (el: HTMLElement): Size => ({ width: el.clientWidth, height: el.clientHeight });
 
 	function setCamera(next: Camera) {
 		offset = { x: next.x, y: next.y };
@@ -61,10 +72,12 @@
 	/** Frame a diagram-space rect (or the whole diagram), animated. Used by tours. */
 	export function focusOn(rect: Rect | undefined, animate = true) {
 		if (!viewport) return;
-		endDrag(true);
-		const port = { width: viewport.clientWidth, height: viewport.clientHeight };
+		endDrag();
+		const port = sizeOf(stage ?? viewport);
+		// a phone screen has little to spare: keep less of it free around a step
+		const margin = stage ? Math.max(24, Math.min(56, Math.round(port.width / 12))) : 56;
 		const target = rect
-			? fitRectCamera(port, { x: rect.x + PAD, y: rect.y + PAD, width: rect.width, height: rect.height }, 56, 1.25)
+			? fitRectCamera(port, { x: rect.x + PAD, y: rect.y + PAD, width: rect.width, height: rect.height }, margin, 1.25)
 			: fitCamera(port, { width: vw, height: vh });
 		if (animate) animateTo(target);
 		else setCamera(target);
@@ -73,49 +86,79 @@
 	export function fit() {
 		if (!viewport) return;
 		stopAnim();
-		endDrag(true);
-		setCamera(fitCamera({ width: viewport.clientWidth, height: viewport.clientHeight }, { width: vw, height: vh }));
+		endDrag();
+		setCamera(fitCamera(sizeOf(stage ?? viewport), { width: vw, height: vh }));
 	}
 
 	export function zoomBy(factor: number, cx?: number, cy?: number) {
 		if (!viewport) return;
 		stopAnim();
-		endDrag(true);
+		endDrag();
+		// a button zooms about the middle of what is visible; the wheel about the cursor
+		const about = cx === undefined && stage ? stage : viewport;
 		setCamera(zoomCamera(camera, factor, {
-			x: cx ?? viewport.clientWidth / 2,
-			y: cy ?? viewport.clientHeight / 2
+			x: cx ?? about.clientWidth / 2,
+			y: cy ?? about.clientHeight / 2
 		}));
+		onusercamera?.();
 	}
 
-	// Capture the original hit target so a genuine card/connector click still reaches it.
-	let drag: { pointerId: number; target: Element; x: number; y: number; camera: Camera; moved: boolean } | undefined = $state();
+	// One pointer pans, two pinch (gesture.ts). Each is captured by the element it went down on, so a
+	// genuine card/connector tap still reaches it, and the click after a pan or a pinch is not a selection.
+	let drag: Drag | undefined = $state();
+	const captured = new Map<number, Element>();
 	let suppressClick = false;
+	function releaseCapture(id: number) {
+		const target = captured.get(id);
+		captured.delete(id);
+		if (target?.hasPointerCapture(id)) target.releasePointerCapture(id);
+	}
 	function down(e: PointerEvent) {
-		if (e.button !== 0 || !e.isPrimary || drag) return;
+		// a second mouse button, or a third finger, is not part of the gesture
+		if (e.button !== 0 || drag?.pointers.length === 2) return;
 		stopAnim();
 		suppressClick = false;
+		const wasMoved = drag?.moved ?? false;
 		const target = e.target as Element;
-		drag = { pointerId: e.pointerId, target, x: e.clientX, y: e.clientY, camera, moved: false };
+		drag = grab(drag, { id: e.pointerId, x: e.clientX, y: e.clientY }, camera);
+		captured.set(e.pointerId, target);
 		target.setPointerCapture(e.pointerId);
+		// a pinch is not a look at the card under the first finger
+		if (!wasMoved && drag.moved) onhover(undefined);
 	}
 	function move(e: PointerEvent) {
-		if (!drag || drag.pointerId !== e.pointerId) return;
-		const dx = e.clientX - drag.x;
-		const dy = e.clientY - drag.y;
-		if (!drag.moved && Math.abs(dx) + Math.abs(dy) <= 3) return;
-		if (!drag.moved) onhover(undefined);
-		drag.moved = true;
-		setCamera(panCamera(drag.camera, dx, dy));
-	}
-	function endDrag(cancelled = false) {
 		if (!drag) return;
-		const { target, pointerId, moved } = drag;
-		suppressClick = moved || cancelled;
-		drag = undefined;
-		if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+		const next = dragMove(drag, e.pointerId, e.clientX, e.clientY);
+		if (!next) return;
+		if (next.started) onhover(undefined);
+		drag = next.drag;
+		if (next.camera) {
+			setCamera(next.camera);
+			onusercamera?.();
+		}
 	}
 	function up(e: PointerEvent) {
-		if (drag?.pointerId === e.pointerId) endDrag(e.type !== 'pointerup');
+		if (!drag) return;
+		// taken away (cancelled, or its capture lost) while it is part of the gesture: the gesture ends,
+		// and cannot select
+		if (e.type !== 'pointerup') {
+			if (drag.pointers.some((p) => p.id === e.pointerId)) endDrag();
+			return;
+		}
+		const next = release(drag, e.pointerId, camera);
+		releaseCapture(e.pointerId);
+		// set once a pan or a pinch begins, so no finger of it can select as it lifts
+		suppressClick = next.moved;
+		drag = next.drag;
+	}
+	/** End the gesture as if nothing was tapped. */
+	function endDrag() {
+		if (!drag) return;
+		suppressClick = true;
+		const ids = drag.pointers.map((p) => p.id);
+		if (drag.away) ids.push(drag.away.id);
+		drag = undefined;
+		ids.forEach(releaseCapture);
 	}
 
 	$effect(() => {
@@ -130,8 +173,9 @@
 				const box = el.getBoundingClientRect();
 				zoomBy(Math.exp(-e.deltaY * unitY * 0.0015), e.clientX - box.left, e.clientY - box.top);
 			} else {
-				endDrag(true);
+				endDrag();
 				setCamera(panCamera(camera, -e.deltaX * unitX, -e.deltaY * unitY));
+				onusercamera?.();
 			}
 		};
 		// Run before item click handlers so a completed pan never changes selection.
@@ -144,12 +188,12 @@
 			}
 			if (!(e.target as Element).closest('.node, .edge, .label')) onselect(undefined);
 		};
-		const onBlur = () => endDrag(true);
+		const onBlur = () => endDrag();
 		el.addEventListener('wheel', onWheel, { passive: false });
 		el.addEventListener('click', onClick, { capture: true });
 		window.addEventListener('blur', onBlur);
 		return () => {
-			endDrag(true);
+			endDrag();
 			el.removeEventListener('wheel', onWheel);
 			el.removeEventListener('click', onClick, { capture: true });
 			window.removeEventListener('blur', onBlur);

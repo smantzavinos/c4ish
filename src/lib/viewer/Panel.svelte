@@ -170,6 +170,10 @@
 		font-size: 22px;
 		cursor: pointer;
 		color: #64748b;
+		/* Set where fingers, not cursors, tap: the hit area grows by this much on every side. */
+		padding: var(--close-pad, 0px);
+		margin: calc(-1 * var(--close-pad, 0px));
+		touch-action: manipulation;
 	}
 	.kind {
 		margin: 0;
@@ -294,6 +298,7 @@
 		cursor: pointer;
 		font: inherit;
 		text-decoration: underline;
+		touch-action: manipulation;
 	}
 	.note {
 		border: 1px solid #e2e8f0;
