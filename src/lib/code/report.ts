@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Model, Profile } from '../model/types.js';
 import { languageOf, parseDefinitions, trimLines, type Definition, type Extent, type FileDefinitions, type Lines } from './definitions.js';
 import { isCodeRef, joinName, parseCodeRef, type CodeRef } from './reference.js';
+import { Submodules, type Repository } from './submodules.js';
 
 /** A model element (or one of its parts) that carries a reference. */
 export interface RefOwner {
@@ -86,6 +87,9 @@ export interface CodeReport<Owner = RefOwner> {
 	files?: FileChange[];
 	/** Changed lines that sit inside no reference. */
 	unowned?: { files: number; ranges: number; lines: number };
+	/** The git submodules of the root that were read from, compared, or could not be used. */
+	repositories?: Repository[];
+	/** References and submodules with a problem. */
 	problems: number;
 }
 
@@ -205,10 +209,21 @@ export function parseDiff(diff: string): RawChange[] {
 	return out;
 }
 
-/** What differs between the base and the head commit, or with no head commit the working tree and its untracked files. */
-function changesSince(root: string, base: string, head?: string): RawChange[] {
-	const changes = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, ...(head ? [head] : []), '--']));
-	for (const path of head ? [] : git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) {
+/**
+ * What differs between the base and the head commit, or with no head commit the working tree and
+ * its untracked files. A submodule's pointer is not a change; what differs inside the submodule
+ * is, under the submodule's path.
+ */
+function changesSince(root: string, base: string, head: string | undefined, submodules: Submodules): RawChange[] {
+	const changes = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, ...(head ? [head] : []), '--'])).filter(
+		(c) => !submodules.isPointer(c.path)
+	);
+	const untracked = head ? [] : git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
+	for (const sub of submodules.changes()) {
+		changes.push(...parseDiff(sub.diff).map((c) => ({ ...c, path: `${sub.path}/${c.path}` })));
+		untracked.push(...sub.untracked.map((path) => `${sub.path}/${path}`));
+	}
+	for (const path of untracked) {
 		const text = readFileSync(join(root, path), 'utf8');
 		const binary = text.includes('\0');
 		const n = lineCount(text);
@@ -300,8 +315,11 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 	const commit = (name: string | undefined) => (name === undefined ? undefined : git(root, ['rev-parse', '--verify', `${name}^{commit}`]).trim());
 	const base = commit(options.base);
 	const headCommit = commit(options.head);
-	const at = (rev: string) =>
+	const submodules = new Submodules(root, base, headCommit);
+	const at = (rev: string, end: 'base' | 'head') =>
 		new Side((path) => {
+			const inSubmodule = submodules.read(end, path);
+			if (inSubmodule !== false) return inSubmodule;
 			try {
 				return git(root, ['cat-file', 'blob', `${rev}:${path}`]);
 			} catch {
@@ -310,14 +328,15 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 		});
 
 	const head = headCommit
-		? at(headCommit)
+		? at(headCommit, 'head')
 		: new Side((path) => {
+				submodules.readFromDisk(path);
 				const file = join(root, path);
 				return existsSync(file) && statSync(file).isFile() ? readFileSync(file, 'utf8') : undefined;
 			});
-	const before = base === undefined ? undefined : at(base);
+	const before = base === undefined ? undefined : at(base, 'base');
 
-	const changes = base === undefined ? undefined : changesSince(root, base, headCommit);
+	const changes = base === undefined ? undefined : changesSince(root, base, headCommit, submodules);
 	const references: RefReport<Owner>[] = [];
 	const resolved = new Map<string, { ref: CodeRef; head: Resolved; base?: Resolved }>();
 
@@ -340,6 +359,10 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 		else if (h.status !== 'resolved' && (!b || b.status !== 'resolved'))
 			report.problem = `${h.status === 'missing-file' ? 'no such file' : 'no such definition'}${b ? ` at the base or ${headCommit ? 'at the head' : 'in the working tree'}` : ''}${h.detail ? ` (${h.detail})` : ''}`;
 
+		// A file that could not be read because its submodule could not be: say that, not "no such file".
+		const blocked = [h, b].some((s) => s?.status === 'missing-file') ? submodules.problemFor(ref.path) : undefined;
+		if (blocked) report.problem = blocked;
+
 		if (b && !unusable) {
 			const [atHead, atBase] = [h.status === 'resolved', b.status === 'resolved'];
 			const layoutOnly = atHead && atBase && h.text !== b.text && h.syntax !== undefined && h.syntax === b.syntax;
@@ -358,7 +381,15 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 		references.push(report);
 	}
 
-	const out: CodeReport<Owner> = { root, ...(base ? { base } : {}), ...(headCommit ? { head: headCommit } : {}), references, problems: references.filter((r) => r.problem).length };
+	const repositories = submodules.report();
+	const out: CodeReport<Owner> = {
+		root,
+		...(base ? { base } : {}),
+		...(headCommit ? { head: headCommit } : {}),
+		references,
+		...(repositories.length ? { repositories } : {}),
+		problems: references.filter((r) => r.problem).length + repositories.filter((r) => r.problem).length
+	};
 	if (changes && withChanges) {
 		const regions = (path: string, side: 'head' | 'base') =>
 			[...resolved].filter(([, r]) => r.ref.path === path).flatMap(([raw, r]) => regionsOf(raw, r[side]));

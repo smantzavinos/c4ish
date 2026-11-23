@@ -41,6 +41,7 @@ code      Finds the code each element's "code" references name (path, path#Name,
           relative to --root (default: the git repository holding the model). With --base it also
           resolves them at that commit, says what changed in each, and lists every changed line with
           the references that contain it. --head reads that commit in place of the working tree.
+          Code in a git submodule of the root is read and compared through the commits the root points to.
           --json prints the full report. Exit 1 when a reference cannot be used as written. Given a profile instead of a model, it does the same for the
           reference implementations its patterns name ("code" on a pattern), without the list of
           changed lines.
@@ -296,6 +297,11 @@ function printCodeReport<Owner>(file: string, report: import('../code/report.js'
 	}
 	const span = (side?: { extents?: { start: number; end: number }[] }) => (side?.extents ?? []).map((e) => `L${e.start}–${e.end}`).join(', ');
 	console.log(`${report.references.length} code reference(s) in ${root}${report.base ? `, ${report.base.slice(0, 10)} → ${report.head?.slice(0, 10) ?? 'working tree'}` : report.head ? `, at ${report.head.slice(0, 10)}` : ''}`);
+	for (const r of report.repositories ?? []) {
+		const ends = [r.base?.slice(0, 10), r.head?.slice(0, 10) ?? (report.head ? undefined : 'working tree')];
+		console.log(`  submodule ${r.path}${report.base ? `: ${ends[0] ?? 'not at the base'} → ${ends[1] ?? 'not at the head'}${!report.head && r.head && !r.problem ? ' and its working tree' : ''}` : r.head ? `: at ${r.head.slice(0, 10)}` : ''}`);
+		if (r.problem) console.log(`             PROBLEM ${r.problem}`);
+	}
 	for (const r of report.references) {
 		const state = r.problem ? 'PROBLEM' : (r.delta ?? r.head.status);
 		const where = span(r.head.status === 'resolved' ? r.head : r.base);
@@ -321,7 +327,10 @@ function printCodeReport<Owner>(file: string, report: import('../code/report.js'
 		listed.slice(0, LIMIT).forEach((l) => console.log(l));
 		if (listed.length > LIMIT) console.log(`  … and ${listed.length - LIMIT} more file(s); --json lists them all`);
 	}
-	if (report.problems) console.error(`${file}: ${report.problems} code reference(s) cannot be used as written`);
+	const unusable = report.references.filter((r) => r.problem).length;
+	const unread = (report.repositories ?? []).filter((r) => r.problem).length;
+	if (unusable) console.error(`${file}: ${unusable} code reference(s) cannot be used as written`);
+	if (unread) console.error(`${file}: ${unread} submodule(s) could not be read or compared`);
 	return report.problems ? 1 : 0;
 }
 

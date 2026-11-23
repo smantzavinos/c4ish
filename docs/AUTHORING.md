@@ -91,6 +91,13 @@ With `--base`, each reference is `added`, `removed`, `modified` or `unchanged`:
 - A definition that was renamed or moved stops resolving, with a hint to where it went. Correct the reference.
 - Every changed line is listed with the references that contain it, so lines inside no reference stand out.
 
+Code in a git submodule of the root is named the same way, by its path from the root (`lib/src/sum.ts#sum`):
+- At a commit of the root, a file under a submodule is read from the submodule's own repository, at the commit of it that the root commit points to.
+- Its changes are the submodule's own between the two commits pointed to, or up to its working tree and untracked files, listed under the submodule's path. The pointer moving is not a changed line.
+- The report names each submodule it read or compared, with those commits (`repositories` in `--json`).
+- A submodule that is needed and not checked out, or whose local repository lacks a commit pointed to, is a problem in the report (exit 1): check it out, or fetch. One that no reference points into and whose pointer did not move is not needed.
+- A submodule inside a submodule is not followed, and a submodule removed since the base is not compared.
+
 ## Patterns
 
 Every element that is code or data says which project pattern it follows, or that it is a one-off. `validate` warns when a new or modified one says neither (`missing-pattern`). Which kinds are code or data is the kind's `category` in the profile; in the default profile `component` is code and `data` is data.
