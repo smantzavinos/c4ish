@@ -94,7 +94,7 @@ With `--base`, each reference is `added`, `removed`, `modified` or `unchanged`:
 Code in a git submodule of the root is named the same way, by its path from the root (`lib/src/sum.ts#sum`):
 - At a commit of the root, a file under a submodule is read from the submodule's own repository, at the commit of it that the root commit points to.
 - Its changes are the submodule's own between the two commits pointed to, or up to its working tree and untracked files, listed under the submodule's path. The pointer moving is not a changed line.
-- The report names each submodule it read or compared, with those commits (`repositories` in `--json`).
+- The report names each submodule it read or compared, with those commits (`repositories` in `--json`, an empty list when it used none).
 - A submodule that is needed and not checked out, or whose local repository lacks a commit pointed to, is a problem in the report (exit 1): check it out, or fetch. One that no reference points into and whose pointer did not move is not needed.
 - A submodule inside a submodule is not followed, and a submodule removed since the base is not compared.
 

@@ -87,8 +87,8 @@ export interface CodeReport<Owner = RefOwner> {
 	files?: FileChange[];
 	/** Changed lines that sit inside no reference. */
 	unowned?: { files: number; ranges: number; lines: number };
-	/** The git submodules of the root that were read from, compared, or could not be used. */
-	repositories?: Repository[];
+	/** The git submodules of the root that were read from, compared, or could not be used. Empty when none was. */
+	repositories: Repository[];
 	/** References and submodules with a problem. */
 	problems: number;
 }
@@ -387,7 +387,7 @@ async function report<Owner>(owners: Map<string, Owner[]>, options: CodeReportOp
 		...(base ? { base } : {}),
 		...(headCommit ? { head: headCommit } : {}),
 		references,
-		...(repositories.length ? { repositories } : {}),
+		repositories,
 		problems: references.filter((r) => r.problem).length + repositories.filter((r) => r.problem).length
 	};
 	if (changes && withChanges) {

@@ -297,7 +297,7 @@ function printCodeReport<Owner>(file: string, report: import('../code/report.js'
 	}
 	const span = (side?: { extents?: { start: number; end: number }[] }) => (side?.extents ?? []).map((e) => `L${e.start}–${e.end}`).join(', ');
 	console.log(`${report.references.length} code reference(s) in ${root}${report.base ? `, ${report.base.slice(0, 10)} → ${report.head?.slice(0, 10) ?? 'working tree'}` : report.head ? `, at ${report.head.slice(0, 10)}` : ''}`);
-	for (const r of report.repositories ?? []) {
+	for (const r of report.repositories) {
 		const ends = [r.base?.slice(0, 10), r.head?.slice(0, 10) ?? (report.head ? undefined : 'working tree')];
 		console.log(`  submodule ${r.path}${report.base ? `: ${ends[0] ?? 'not at the base'} → ${ends[1] ?? 'not at the head'}${!report.head && r.head && !r.problem ? ' and its working tree' : ''}` : r.head ? `: at ${r.head.slice(0, 10)}` : ''}`);
 		if (r.problem) console.log(`             PROBLEM ${r.problem}`);
@@ -328,7 +328,7 @@ function printCodeReport<Owner>(file: string, report: import('../code/report.js'
 		if (listed.length > LIMIT) console.log(`  … and ${listed.length - LIMIT} more file(s); --json lists them all`);
 	}
 	const unusable = report.references.filter((r) => r.problem).length;
-	const unread = (report.repositories ?? []).filter((r) => r.problem).length;
+	const unread = report.repositories.filter((r) => r.problem).length;
 	if (unusable) console.error(`${file}: ${unusable} code reference(s) cannot be used as written`);
 	if (unread) console.error(`${file}: ${unread} submodule(s) could not be read or compared`);
 	return report.problems ? 1 : 0;

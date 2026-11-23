@@ -184,7 +184,7 @@ describe('code in a git submodule of the root', () => {
 
 		// not moved and not referenced: not needed
 		const untouched = await codeReport(model('docs/readme.md'), profile, { root: bare, base: head.root });
-		expect(untouched.repositories).toBeUndefined();
+		expect(untouched.repositories).toEqual([]);
 		expect(untouched.problems).toBe(0);
 	});
 
@@ -201,13 +201,13 @@ describe('code in a git submodule of the root', () => {
 		expect(report.problems).toBe(2);
 
 		const fromThere = await codeReport(model('lib/src/sum.ts#sum'), profile, { root: r.root, base: head });
-		expect(fromThere.repositories![0].problem).toBe(`commit ${absent.slice(0, 10)} of submodule lib, which the base commit points to, is not in its local repository; fetch it`);
+		expect(fromThere.repositories[0].problem).toBe(`commit ${absent.slice(0, 10)} of submodule lib, which the base commit points to, is not in its local repository; fetch it`);
 		expect(fromThere.files!.map((f) => f.path)).toEqual([]);
 	});
 
 	it('a root with no submodule reports none', async () => {
 		const r = rootWithSubmodule();
 		const report = await codeReport(model('docs/readme.md'), profile, { root: r.root, base: r.first, head: r.first });
-		expect(report.repositories).toBeUndefined();
+		expect(report.repositories).toEqual([]);
 	});
 });
